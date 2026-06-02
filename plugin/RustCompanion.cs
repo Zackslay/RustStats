@@ -112,7 +112,7 @@ namespace Oxide.Plugins
                 try
                 {
                     var req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(
-                        $"http://localhost:{_cfg.AppPort}/map/api/v1/mapimageraw");
+                        $"http://localhost:{_cfg.AppPort}/api/v1/mapimageraw");
                     req.Timeout = 60000;
                     req.ReadWriteTimeout = 60000;
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentWipeId, queryLeaderboard } from "@/lib/db";
+import { getCurrentWipeId, queryLeaderboard, saveAvatars } from "@/lib/db";
+import { fetchSteamAvatars } from "@/lib/steam";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,22 @@ export async function GET(req: NextRequest) {
     for (const f of NUM_FIELDS) out[f] = Number(out[f] ?? 0);
     return out;
   });
+
+  // Backfill Steam avatars for players missing one (cached in DB, so this only
+  // fetches once per player). No-op without STEAM_API_KEY.
+  const missing = players
+    .filter((p) => !p.avatar_url)
+    .map((p) => String(p.steam_id));
+  if (missing.length > 0) {
+    const avatars = await fetchSteamAvatars(missing);
+    if (Object.keys(avatars).length > 0) {
+      await saveAvatars(avatars);
+      for (const p of players) {
+        const url = avatars[String(p.steam_id)];
+        if (url) p.avatar_url = url;
+      }
+    }
+  }
 
   return NextResponse.json({ category, wipeScope, players });
 }

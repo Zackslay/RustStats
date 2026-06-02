@@ -62,7 +62,14 @@ export async function POST(req: NextRequest) {
         }
       })
     );
-    await mergePlayers(positions);
+    // A full live update (includes `server`) carries the complete online set,
+    // so REPLACE players — otherwise disconnected players linger as "online".
+    // A bare players push (e.g. OnPlayerConnected) just merges one in.
+    if (body.server) {
+      await updateGameState({ players: positions });
+    } else {
+      await mergePlayers(positions);
+    }
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────

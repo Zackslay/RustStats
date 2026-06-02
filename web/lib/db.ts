@@ -178,6 +178,18 @@ export async function upsertPlayer(steamId: string, name: string, avatarUrl?: st
   );
 }
 
+// Persist fetched Steam avatars (only fills empty ones so we don't re-fetch).
+export async function saveAvatars(avatars: Record<string, string>) {
+  for (const [steamId, url] of Object.entries(avatars)) {
+    if (!url) continue;
+    await exec(
+      `UPDATE players SET avatar_url = $1
+       WHERE steam_id = $2 AND (avatar_url IS NULL OR avatar_url = '')`,
+      [url, steamId]
+    );
+  }
+}
+
 export async function upsertStats(steamId: string, wipeId: number) {
   await exec(
     `INSERT INTO player_stats (steam_id, wipe_id) VALUES ($1, $2)

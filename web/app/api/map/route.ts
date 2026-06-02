@@ -3,13 +3,13 @@ import { getGameState } from "@/lib/gameState";
 
 export const dynamic = "force-dynamic";
 
-let cachedImage: Uint8Array | null = null;
+let cachedBlob: Blob | null = null;
 let cachedAt = 0;
 const CACHE_TTL = 3600 * 1000;
 
 export async function GET() {
-  if (cachedImage && Date.now() - cachedAt < CACHE_TTL) {
-    return new NextResponse(cachedImage, {
+  if (cachedBlob && Date.now() - cachedAt < CACHE_TTL) {
+    return new NextResponse(cachedBlob, {
       headers: {
         "Content-Type": "image/png",
         "Cache-Control": "public, max-age=3600",
@@ -25,18 +25,18 @@ export async function GET() {
   }
 
   try {
-    const res = await fetch(mapUrl, { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(mapUrl, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) {
-      return new NextResponse(`Server returned ${res.status}`, { status: 502 });
+      return new NextResponse(`Upstream returned ${res.status}`, { status: 502 });
     }
 
-    const buf = new Uint8Array(await res.arrayBuffer());
-    cachedImage = buf;
+    const blob = await res.blob();
+    cachedBlob = blob;
     cachedAt = Date.now();
 
-    return new NextResponse(buf, {
+    return new NextResponse(blob, {
       headers: {
-        "Content-Type": "image/png",
+        "Content-Type": blob.type || "image/png",
         "Cache-Control": "public, max-age=3600",
       },
     });

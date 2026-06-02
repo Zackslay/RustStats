@@ -100,7 +100,7 @@ namespace Oxide.Plugins
                 maxPlayers = ConVar.Server.maxplayers,
                 mapSeed = World.Seed,
                 mapSize = (int)World.Size,
-                mapUrl = $"http://{ConVar.Server.ip}:{_cfg.AppPort}/map/api/v1/mapimageraw",
+                mapUrl = $"https://rustmaps.com/img/maps/{World.Seed}_{(int)World.Size}_vegetation.png",
                 wipeDate = ((DateTimeOffset)SaveRestore.SaveCreatedTime).ToUnixTimeSeconds(),
                 updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             };

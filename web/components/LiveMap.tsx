@@ -34,9 +34,11 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
   const [leafletLoaded, setLeafletLoaded] = useState(false);
 
   // Rust coords → Leaflet LatLng scaled to MAP_UNITS
+  // In Rust/Unity, +Z goes south (down the image); Leaflet lat increases north (up).
+  // Invert Z so the map image and markers align correctly.
   function rustToLatLng(x: number, z: number): [number, number] {
     const half = mapSize / 2;
-    const lat = ((z + half) / mapSize) * MAP_UNITS;
+    const lat = ((half - z) / mapSize) * MAP_UNITS;
     const lng = ((x + half) / mapSize) * MAP_UNITS;
     return [lat, lng];
   }

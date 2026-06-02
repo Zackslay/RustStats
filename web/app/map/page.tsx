@@ -24,6 +24,30 @@ export default function MapPage() {
   });
   const [loading, setLoading] = useState(true);
 
+  // ── Map calibration (aligns markers to the rendered map image) ────────────
+  const [showCal, setShowCal] = useState(false);
+  const [margin, setMargin] = useState(0);
+  const [offX, setOffX] = useState(0);
+  const [offZ, setOffZ] = useState(0);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("mapCalib");
+      if (raw) {
+        const c = JSON.parse(raw);
+        setMargin(c.margin ?? 0);
+        setOffX(c.offX ?? 0);
+        setOffZ(c.offZ ?? 0);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("mapCalib", JSON.stringify({ margin, offX, offZ }));
+    } catch {}
+  }, [margin, offX, offZ]);
+
   const fetchState = useCallback(async () => {
     try {
       const res = await fetch("/api/gamestate");
@@ -158,10 +182,74 @@ export default function MapPage() {
             mapSize={mapSize}
             mapImageUrl={mapUrl}
             state={state}
+            margin={margin}
+            offX={offX}
+            offZ={offZ}
           />
+
+          {/* Calibration toggle */}
+          <button
+            onClick={() => setShowCal((v) => !v)}
+            className="absolute top-2 right-2 z-[1000] text-[11px] px-2 py-1 rounded bg-black/70 border border-[#333] text-gray-300 hover:text-white"
+          >
+            {showCal ? "Close" : "Align ⚙"}
+          </button>
+
+          {showCal && (
+            <div className="absolute top-10 right-2 z-[1000] w-60 bg-[#111]/95 border border-[#333] rounded-lg p-3 text-xs space-y-3">
+              <p className="text-gray-400 leading-snug">
+                Drag until monument labels sit on the monuments, then send these
+                3 numbers.
+              </p>
+              <CalSlider label="Margin" value={margin} min={-0.1} max={0.25} step={0.002} onChange={setMargin} format={(v) => v.toFixed(3)} />
+              <CalSlider label="Offset X" value={offX} min={-600} max={600} step={5} onChange={setOffX} format={(v) => v.toFixed(0)} />
+              <CalSlider label="Offset Z" value={offZ} min={-600} max={600} step={5} onChange={setOffZ} format={(v) => v.toFixed(0)} />
+              <div className="flex items-center justify-between pt-1">
+                <code className="text-[10px] text-emerald-400">
+                  {`m=${margin.toFixed(3)} x=${offX} z=${offZ}`}
+                </code>
+                <button
+                  onClick={() => { setMargin(0); setOffX(0); setOffZ(0); }}
+                  className="text-[10px] text-gray-400 hover:text-white underline"
+                >
+                  reset
+                </button>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>
+  );
+}
+
+function CalSlider({
+  label, value, min, max, step, onChange, format,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  format: (v: number) => string;
+}) {
+  return (
+    <label className="block">
+      <span className="flex justify-between text-gray-300">
+        <span>{label}</span>
+        <span className="text-gray-500">{format(value)}</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-full accent-emerald-500"
+      />
+    </label>
   );
 }
 

@@ -10,6 +10,10 @@ interface Props {
   mapSize: number; // Rust world size, e.g. 3500
   mapImageUrl: string; // Full map image URL
   state: GameState;
+  // Calibration: how the world maps onto the rendermap image.
+  margin?: number; // ocean-margin fraction (world is inset by this on each edge)
+  offX?: number; // world-unit X offset
+  offZ?: number; // world-unit Z offset
 }
 
 const EVENT_ICONS: Record<string, string> = {
@@ -25,7 +29,7 @@ const EVENT_ICONS: Record<string, string> = {
 const MAP_UNITS = 1000;
 const BOUNDS: [[number, number], [number, number]] = [[0, 0], [MAP_UNITS, MAP_UNITS]];
 
-export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
+export default function LiveMap({ mapSize, mapImageUrl, state, margin = 0, offX = 0, offZ = 0 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const overlayRef = useRef<import("leaflet").ImageOverlay | null>(null);
@@ -35,12 +39,16 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
   const gridLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
 
-  // Rust coords → Leaflet LatLng scaled to MAP_UNITS
+  // Rust coords → Leaflet LatLng scaled to MAP_UNITS.
+  // Applies calibration: world fills the [margin, 1-margin] band of the image
+  // (ocean margin), plus optional world-unit offsets.
   function rustToLatLng(x: number, z: number): [number, number] {
     const half = mapSize / 2;
-    const lat = ((z + half) / mapSize) * MAP_UNITS;
-    const lng = ((x + half) / mapSize) * MAP_UNITS;
-    return [lat, lng];
+    let nx = ((x + offX) + half) / mapSize; // 0..1 across world
+    let nz = ((z + offZ) + half) / mapSize;
+    nx = margin + nx * (1 - 2 * margin);
+    nz = margin + nz * (1 - 2 * margin);
+    return [nz * MAP_UNITS, nx * MAP_UNITS];
   }
 
   // Load Leaflet once
@@ -124,7 +132,7 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
         markersRef.current.delete(id);
       }
     }
-  }, [state.players]);
+  }, [state.players, margin, offX, offZ]);
 
   // Update event markers
   useEffect(() => {
@@ -152,7 +160,7 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
       }
       eventMarkersRef.current.push(m);
     }
-  }, [state.events]);
+  }, [state.events, margin, offX, offZ]);
 
   // Draw the Rust coordinate grid (same transform as players, so it doubles as
   // an alignment check against the rendered map underneath).
@@ -197,7 +205,7 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
 
     group.addTo(map);
     gridLayerRef.current = group;
-  }, [mapSize, leafletLoaded]);
+  }, [mapSize, leafletLoaded, margin, offX, offZ]);
 
   // Draw monument labels (static — sent by the plugin once loaded).
   useEffect(() => {
@@ -219,8 +227,8 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
       const marker = L!.marker(pos, { icon, interactive: false, keyboard: false }).addTo(map);
       monumentMarkersRef.current.push(marker);
     }
-    // Monuments are static; redraw only when they first arrive or the map rescales.
-  }, [state.server?.monuments?.length, mapSize, leafletLoaded]);
+    // Monuments are static; redraw only when they first arrive or calibration changes.
+  }, [state.server?.monuments?.length, mapSize, leafletLoaded, margin, offX, offZ]);
 
   return <div ref={containerRef} className="w-full h-full rounded-lg" />;
 }

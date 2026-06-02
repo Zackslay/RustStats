@@ -33,11 +33,17 @@ namespace Oxide.Plugins
             [JsonProperty("Batch stat flush interval (seconds)")]
             public float StatFlushInterval { get; set; } = 10f;
 
-            [JsonProperty("Rust+ App Port (for map image)")]
-            public int AppPort { get; set; } = 28082;
-
-            [JsonProperty("Map Image URL (overrides auto-fetch if set)")]
+            [JsonProperty("Map Image URL (overrides auto-render if set)")]
             public string MapImageUrl { get; set; } = "";
+
+            [JsonProperty("Seconds to wait for world.rendermap to finish")]
+            public float MapRenderWaitSeconds { get; set; } = 20f;
+
+            [JsonProperty("Max map image dimension (px) before upload")]
+            public int MapMaxDimension { get; set; } = 2048;
+
+            [JsonProperty("Map JPEG quality (1-100)")]
+            public int MapJpegQuality { get; set; } = 80;
         }
 
         protected override void LoadConfig()
@@ -102,64 +108,196 @@ namespace Oxide.Plugins
             FlushStats();
         }
 
-        // ── Map image upload ──────────────────────────────────────────────────
+        // ── Map image render + upload ─────────────────────────────────────────
+        // Rust's built-in `world.rendermap` renders the *currently loaded* world
+        // (procedural OR custom mapstr.gg maps) to map_<size>_<seed>.png in the
+        // server root. The render is a tight crop of the playable area with no
+        // ocean margin, so world coords map onto it linearly (see LiveMap.tsx).
         private void TryUploadMap()
         {
             _mapUploadAttempt++;
-            Puts($"[RustCompanion] Map upload attempt {_mapUploadAttempt}...");
-            System.Threading.Tasks.Task.Run(() =>
+            Puts($"[RustCompanion] Map render attempt {_mapUploadAttempt}: running world.rendermap...");
+
+            // Snapshot the newest existing map_*.png so we can detect the fresh one.
+            var before = LatestMapWriteTime();
+
+            // Trigger the render on the server (runs async inside the engine).
+            ConsoleSystem.Run(ConsoleSystem.Option.Server.Quiet(), "world.rendermap");
+
+            // Poll for a newer/larger render to appear, then upload it.
+            timer.Once(_cfg.MapRenderWaitSeconds, () => PickAndUploadMap(before, 0));
+        }
+
+        private void PickAndUploadMap(DateTime before, int polls)
+        {
+            var file = FindFreshMapFile(before);
+            if (file == null)
+            {
+                if (polls < 6) // keep polling ~ another 30s
+                {
+                    timer.Once(5f, () => PickAndUploadMap(before, polls + 1));
+                    return;
+                }
+                Puts("[RustCompanion] No map render found on disk. " +
+                     "Verify the server can write to its root dir, or set Map Image URL in config.");
+                RetryRenderOrGiveUp();
+                return;
+            }
+
+            try
+            {
+                var raw = System.IO.File.ReadAllBytes(file);
+                if (raw.Length < 1024)
+                {
+                    Puts("[RustCompanion] Map render too small, retrying...");
+                    RetryRenderOrGiveUp();
+                    return;
+                }
+
+                // The raw render is ~5000px / 20MB+ — far over Vercel's 4.5MB
+                // serverless body limit. Downscale + JPEG-encode in-engine so the
+                // payload is < 1MB. Linear scaling keeps coords aligned.
+                byte[] bytes = DownscaleToJpg(raw, _cfg.MapMaxDimension, _cfg.MapJpegQuality) ?? raw;
+
+                var base64 = Convert.ToBase64String(bytes);
+                Puts($"[RustCompanion] Map {raw.Length / 1024}KB -> {bytes.Length / 1024}KB (jpg) from {System.IO.Path.GetFileName(file)}, uploading...");
+
+                var json = JsonConvert.SerializeObject(new { mapImage = base64 });
+                var headers = new Dictionary<string, string>
+                {
+                    ["Content-Type"] = "application/json",
+                    ["x-plugin-secret"] = _cfg.PluginSecret
+                };
+                webrequest.Enqueue(
+                    _cfg.DashboardUrl + "/api/map/upload",
+                    json,
+                    (code, res2) =>
+                    {
+                        if (code == 200) Puts("[RustCompanion] Map uploaded OK!");
+                        else { Puts($"[RustCompanion] Map upload failed: {code} {res2}"); RetryRenderOrGiveUp(); }
+                    },
+                    this, RequestMethod.POST, headers, 120f
+                );
+            }
+            catch (Exception ex)
+            {
+                Puts($"[RustCompanion] Map read/upload error: {ex.Message}");
+                RetryRenderOrGiveUp();
+            }
+        }
+
+        private void RetryRenderOrGiveUp()
+        {
+            if (_mapUploadAttempt < 5)
+                timer.Once(60f, TryUploadMap);
+            else
+                Puts("[RustCompanion] Map upload failed after 5 attempts. Run 'ruststats.uploadmap' manually.");
+        }
+
+        // world.rendermap writes to the server root (current working dir).
+        private static IEnumerable<string> MapSearchDirs()
+        {
+            yield return ".";
+            string root = null;
+            try { root = Interface.Oxide?.RootDirectory; } catch { }
+            if (!string.IsNullOrEmpty(root)) yield return root;
+        }
+
+        private static IEnumerable<string> MapFiles()
+        {
+            var seen = new HashSet<string>();
+            foreach (var dir in MapSearchDirs())
+            {
+                string[] files;
+                try { files = System.IO.Directory.GetFiles(dir, "map_*.png"); }
+                catch { continue; }
+                foreach (var f in files)
+                {
+                    var full = System.IO.Path.GetFullPath(f);
+                    if (seen.Add(full)) yield return full;
+                }
+            }
+        }
+
+        private static DateTime LatestMapWriteTime()
+        {
+            var latest = DateTime.MinValue;
+            foreach (var f in MapFiles())
+            {
+                try { var t = System.IO.File.GetLastWriteTimeUtc(f); if (t > latest) latest = t; }
+                catch { }
+            }
+            return latest;
+        }
+
+        // Newest map_*.png written after `before` (i.e. the render we just triggered).
+        private static string FindFreshMapFile(DateTime before)
+        {
+            string best = null;
+            var bestTime = before;
+            foreach (var f in MapFiles())
             {
                 try
                 {
-                    var req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(
-                        $"http://localhost:{_cfg.AppPort}/api/v1/mapimageraw");
-                    req.Timeout = 60000;
-                    req.ReadWriteTimeout = 60000;
+                    var t = System.IO.File.GetLastWriteTimeUtc(f);
+                    if (t > bestTime) { bestTime = t; best = f; }
+                }
+                catch { }
+            }
+            return best;
+        }
 
-                    using (var resp = (System.Net.HttpWebResponse)req.GetResponse())
-                    using (var stream = resp.GetResponseStream())
-                    using (var ms = new System.IO.MemoryStream())
+        // Decode PNG bytes, nearest-neighbour downscale to maxDim, re-encode JPEG.
+        // CPU-only (LoadImage/GetPixels32/EncodeToJPG) so it works on headless
+        // dedicated servers (-batchmode -nographics) with no GPU. Returns null on
+        // failure so the caller can fall back to the raw bytes.
+        private byte[] DownscaleToJpg(byte[] pngBytes, int maxDim, int quality)
+        {
+            Texture2D src = null, scaled = null;
+            try
+            {
+                quality = Mathf.Clamp(quality, 1, 100);
+                src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!src.LoadImage(pngBytes)) return null;
+
+                int sw = src.width, sh = src.height;
+                int biggest = Mathf.Max(sw, sh);
+                if (maxDim <= 0 || biggest <= maxDim)
+                    return src.EncodeToJPG(quality); // already small enough
+
+                float scale = (float)maxDim / biggest;
+                int tw = Mathf.Max(1, Mathf.RoundToInt(sw * scale));
+                int th = Mathf.Max(1, Mathf.RoundToInt(sh * scale));
+
+                var srcPx = src.GetPixels32();
+                var dstPx = new Color32[tw * th];
+                for (int y = 0; y < th; y++)
+                {
+                    int sy = (int)((long)y * sh / th);
+                    int srcRow = sy * sw;
+                    int dstRow = y * tw;
+                    for (int x = 0; x < tw; x++)
                     {
-                        stream.CopyTo(ms);
-                        var bytes = ms.ToArray();
-                        if (bytes.Length < 100)
-                        {
-                            Puts("[RustCompanion] Map response too small, retrying in 60s...");
-                            if (_mapUploadAttempt < 5) NextTick(() => timer.Once(60f, TryUploadMap));
-                            return;
-                        }
-
-                        var base64 = Convert.ToBase64String(bytes);
-                        Puts($"[RustCompanion] Map downloaded ({bytes.Length / 1024}KB), uploading...");
-
-                        NextTick(() =>
-                        {
-                            var json = JsonConvert.SerializeObject(new { mapImage = base64 });
-                            var headers = new Dictionary<string, string>
-                            {
-                                ["Content-Type"] = "application/json",
-                                ["x-plugin-secret"] = _cfg.PluginSecret
-                            };
-                            webrequest.Enqueue(
-                                _cfg.DashboardUrl + "/api/map/upload",
-                                json,
-                                (code, res2) => Puts(code == 200
-                                    ? "[RustCompanion] Map uploaded OK!"
-                                    : $"[RustCompanion] Map upload failed: {code} {res2}"),
-                                this, RequestMethod.POST, headers, 120f
-                            );
-                        });
+                        int sx = (int)((long)x * sw / tw);
+                        dstPx[dstRow + x] = srcPx[srcRow + sx];
                     }
                 }
-                catch (Exception ex)
-                {
-                    Puts($"[RustCompanion] Map error (attempt {_mapUploadAttempt}): {ex.Message}");
-                    if (_mapUploadAttempt < 5)
-                        NextTick(() => timer.Once(60f, TryUploadMap));
-                    else
-                        Puts("[RustCompanion] Map upload failed after 5 attempts. Run 'ruststats.uploadmap' manually.");
-                }
-            });
+
+                scaled = new Texture2D(tw, th, TextureFormat.RGBA32, false);
+                scaled.SetPixels32(dstPx);
+                scaled.Apply(false);
+                return scaled.EncodeToJPG(quality);
+            }
+            catch (Exception ex)
+            {
+                Puts($"[RustCompanion] Downscale failed ({ex.Message}), using raw render.");
+                return null;
+            }
+            finally
+            {
+                if (src != null) UnityEngine.Object.DestroyImmediate(src);
+                if (scaled != null) UnityEngine.Object.DestroyImmediate(scaled);
+            }
         }
 
         // ── Live update (positions + events) ─────────────────────────────────
@@ -177,11 +315,9 @@ namespace Oxide.Plugins
                 maxPlayers = ConVar.Server.maxplayers,
                 mapSeed = World.Seed,
                 mapSize = (int)World.Size,
-                mapUrl = !string.IsNullOrEmpty(_cfg.MapImageUrl)
-                    ? _cfg.MapImageUrl
-                    : (!string.IsNullOrEmpty(ConVar.Server.levelurl)
-                        ? ConVar.Server.levelurl.Replace(".map", ".png")
-                        : $"https://rustmaps.com/img/maps/{World.Seed}_{(int)World.Size}_vegetation.png"),
+                // Empty => site serves our self-hosted render from /api/map.
+                // A configured override (MapImageUrl) is used verbatim instead.
+                mapUrl = _cfg.MapImageUrl ?? "",
                 wipeDate = ((DateTimeOffset)SaveRestore.SaveCreatedTime).ToUnixTimeSeconds(),
                 updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             };

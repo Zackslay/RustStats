@@ -30,11 +30,12 @@ export async function GET() {
     }
 
     const bytes = Buffer.from(base64, "base64");
-    const blob = new Blob([bytes], { type: "image/png" });
+    // Plugin uploads a JPEG (downscaled to fit Vercel's 4.5MB body limit).
+    const blob = new Blob([bytes], { type: "image/jpeg" });
 
     return new NextResponse(blob, {
       headers: {
-        "Content-Type": "image/png",
+        "Content-Type": "image/jpeg",
         "Cache-Control": "public, max-age=3600",
       },
     });

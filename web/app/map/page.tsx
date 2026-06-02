@@ -43,14 +43,16 @@ export default function MapPage() {
   }, [fetchState]);
 
   const mapSize = (state.wipe?.map_size as number) ?? state.server?.mapSize ?? 3500;
-  // Proxy localhost URLs (Rust+ app port) through /api/map so the server IP is
-  // never exposed; use external URLs (configured overrides, rustmaps.com, etc.) directly.
+  // The plugin renders the map (world.rendermap) and uploads it to /api/map.
+  // Empty mapUrl => use our self-hosted render. A non-localhost override is used
+  // directly; legacy localhost values still fall back to the proxy.
   const rawMapUrl = state.server?.mapUrl ?? "";
-  const mapUrl = rawMapUrl
-    ? rawMapUrl.startsWith("http://localhost")
-      ? "/api/map"
-      : rawMapUrl
-    : "";
+  const externalUrl =
+    rawMapUrl && !rawMapUrl.startsWith("http://localhost") ? rawMapUrl : "";
+  // Cache-bust per wipe so the overlay picks up the render once it's uploaded.
+  const mapUrl =
+    externalUrl ||
+    `/api/map${state.server?.wipeDate ? `?v=${state.server.wipeDate}` : ""}`;
   const onlinePlayers = Object.values(state.players).filter((p) => p.online);
   const server = state.server;
 

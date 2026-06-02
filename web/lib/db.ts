@@ -141,6 +141,30 @@ export async function startNewWipe(): Promise<number> {
   return rows[0].id;
 }
 
+// ── Map image ───────────────────────────────────────────────────────────────
+// Stores the plugin's rendered map (base64 JPEG) on the current wipe. Self-heals
+// if the column or current-wipe row is missing (older schemas).
+export async function setCurrentMapImage(base64: string): Promise<void> {
+  await exec(
+    `CREATE TABLE IF NOT EXISTS wipes (
+       id         SERIAL PRIMARY KEY,
+       started_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+       map_seed   BIGINT,
+       map_size   INTEGER,
+       map_url    TEXT NOT NULL DEFAULT '',
+       map_image  TEXT NOT NULL DEFAULT '',
+       is_current BOOLEAN NOT NULL DEFAULT TRUE
+     )`
+  );
+  await exec(`ALTER TABLE wipes ADD COLUMN IF NOT EXISTS map_image TEXT NOT NULL DEFAULT ''`);
+  const rows = await query(`SELECT id FROM wipes WHERE is_current = TRUE LIMIT 1`);
+  if (rows.length === 0) {
+    await exec(`INSERT INTO wipes (is_current, map_image) VALUES (TRUE, $1)`, [base64]);
+  } else {
+    await exec(`UPDATE wipes SET map_image = $1 WHERE is_current = TRUE`, [base64]);
+  }
+}
+
 // ── Player / stat helpers ─────────────────────────────────────────────────────
 export async function upsertPlayer(steamId: string, name: string, avatarUrl?: string) {
   await exec(

@@ -88,6 +88,7 @@ namespace Oxide.Plugins
             LoadConfig();
             timer.Every(_cfg.UpdateInterval, SendLiveUpdate);
             timer.Every(_cfg.StatFlushInterval, FlushStats);
+            timer.Every(60f, AccumulatePlaytime);
             if (string.IsNullOrEmpty(_cfg.MapImageUrl))
                 timer.Once(60f, TryUploadMap);
             else
@@ -559,10 +560,15 @@ namespace Oxide.Plugins
             PostAsync("/api/plugin", new { players = new[] { new { steamId = player.UserIDString, name = player.displayName, x = 0f, y = 0f, z = 0f, health = 100, online = true } } });
         }
 
-        // Accumulate playtime when a player is online (called every StatFlushInterval)
-        private void OnTick()
+        // Add 60s of playtime for every connected player, once per minute.
+        // Accumulated into the stat delta and flushed like every other stat.
+        private void AccumulatePlaytime()
         {
-            // We don't use OnTick for perf; playtime is approximated via flush interval
+            foreach (var p in BasePlayer.activePlayerList)
+            {
+                if (p == null || !p.IsConnected) continue;
+                GetOrAdd(p).Playtime += 60;
+            }
         }
 
         // ── HTTP helper ───────────────────────────────────────────────────────

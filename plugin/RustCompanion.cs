@@ -72,13 +72,23 @@ namespace Oxide.Plugins
         }
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
+        private int _mapUploadAttempt = 0;
+
         private void OnServerInitialized()
         {
             LoadConfig();
             timer.Every(_cfg.UpdateInterval, SendLiveUpdate);
             timer.Every(_cfg.StatFlushInterval, FlushStats);
-            timer.Once(10f, DownloadAndUploadMap);
+            timer.Once(60f, TryUploadMap); // give Rust+ service time to start
             Puts($"[RustCompanion] Streaming to {_cfg.DashboardUrl}");
+        }
+
+        [ConsoleCommand("ruststats.uploadmap")]
+        private void CmdUploadMap(ConsoleSystem.Arg arg)
+        {
+            if (!arg.IsAdmin) return;
+            _mapUploadAttempt = 0;
+            TryUploadMap();
         }
 
         private void Unload()
@@ -87,16 +97,32 @@ namespace Oxide.Plugins
         }
 
         // ── Map image upload ──────────────────────────────────────────────────
-        private void DownloadAndUploadMap()
+        private void TryUploadMap()
         {
-            Puts("[RustCompanion] Downloading map image from localhost...");
+            _mapUploadAttempt++;
+            Puts($"[RustCompanion] Map upload attempt {_mapUploadAttempt}...");
             System.Threading.Tasks.Task.Run(() =>
             {
                 try
                 {
-                    using (var client = new System.Net.WebClient())
+                    var req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(
+                        $"http://localhost:{_cfg.AppPort}/map/api/v1/mapimageraw");
+                    req.Timeout = 60000;
+                    req.ReadWriteTimeout = 60000;
+
+                    using (var resp = (System.Net.HttpWebResponse)req.GetResponse())
+                    using (var stream = resp.GetResponseStream())
+                    using (var ms = new System.IO.MemoryStream())
                     {
-                        var bytes = client.DownloadData($"http://localhost:{_cfg.AppPort}/map/api/v1/mapimageraw");
+                        stream.CopyTo(ms);
+                        var bytes = ms.ToArray();
+                        if (bytes.Length < 100)
+                        {
+                            Puts("[RustCompanion] Map response too small, retrying in 60s...");
+                            if (_mapUploadAttempt < 5) NextTick(() => timer.Once(60f, TryUploadMap));
+                            return;
+                        }
+
                         var base64 = Convert.ToBase64String(bytes);
                         Puts($"[RustCompanion] Map downloaded ({bytes.Length / 1024}KB), uploading...");
 
@@ -111,9 +137,9 @@ namespace Oxide.Plugins
                             webrequest.Enqueue(
                                 _cfg.DashboardUrl + "/api/map/upload",
                                 json,
-                                (code, resp) => Puts(code == 200
-                                    ? "[RustCompanion] Map uploaded OK"
-                                    : $"[RustCompanion] Map upload failed: {code} {resp}"),
+                                (code, res2) => Puts(code == 200
+                                    ? "[RustCompanion] Map uploaded OK!"
+                                    : $"[RustCompanion] Map upload failed: {code} {res2}"),
                                 this, RequestMethod.POST, headers, 120f
                             );
                         });
@@ -121,7 +147,11 @@ namespace Oxide.Plugins
                 }
                 catch (Exception ex)
                 {
-                    Puts($"[RustCompanion] Map download error: {ex.Message}");
+                    Puts($"[RustCompanion] Map error (attempt {_mapUploadAttempt}): {ex.Message}");
+                    if (_mapUploadAttempt < 5)
+                        NextTick(() => timer.Once(60f, TryUploadMap));
+                    else
+                        Puts("[RustCompanion] Map upload failed after 5 attempts. Run 'ruststats.uploadmap' manually.");
                 }
             });
         }

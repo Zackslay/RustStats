@@ -48,9 +48,9 @@ declare global {
 function getPool(): Pool {
   if (!global.__pgPool) {
     global.__pgPool = new Pool({
-      connectionString: process.env.POSTGRES_URL,
+      connectionString: process.env.POSTGRES_URL_NON_POOLING ?? process.env.POSTGRES_URL,
       ssl: { rejectUnauthorized: false },
-      max: 5,
+      max: 3,
     });
   }
   return global.__pgPool;

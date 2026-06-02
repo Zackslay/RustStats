@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const s = body.server as { mapSeed?: number; mapSize?: number; mapUrl?: string };
     if (s.mapSeed || s.mapUrl) {
       const { Pool } = await import("pg");
-      const pool = new Pool({ connectionString: process.env.POSTGRES_URL, ssl: { rejectUnauthorized: false } });
+      const pool = new Pool({ connectionString: process.env.POSTGRES_URL_NON_POOLING ?? process.env.POSTGRES_URL, ssl: { rejectUnauthorized: false } });
       await pool.query(
         `UPDATE wipes SET
            map_seed = COALESCE($1, map_seed),
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
         headshot: boolean; timestamp?: number;
       }>).map(async (k) => {
         const { Pool } = await import("pg");
-        const pool = new Pool({ connectionString: process.env.POSTGRES_URL, ssl: { rejectUnauthorized: false } });
+        const pool = new Pool({ connectionString: process.env.POSTGRES_URL_NON_POOLING ?? process.env.POSTGRES_URL, ssl: { rejectUnauthorized: false } });
         await pool.query(
           `INSERT INTO kill_log (wipe_id, killer_id, victim_id, weapon, headshot, ts)
            VALUES ($1, $2, $3, $4, $5, $6)`,

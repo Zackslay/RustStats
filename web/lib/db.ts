@@ -1,6 +1,21 @@
-import { Pool, PoolClient } from "pg";
+import { Pool } from "pg";
 
-// Connection pool — reused across warm serverless invocations
+// Parse POSTGRES_URL to get pooler host/user/port without letting the
+// connection string's sslmode parameter override our ssl config.
+function parsePoolConfig() {
+  const raw = process.env.POSTGRES_URL ?? "";
+  const u = new URL(raw);
+  return {
+    host: u.hostname,
+    port: u.port ? parseInt(u.port) : 5432,
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    database: u.pathname.replace(/^\//, ""),
+    ssl: { rejectUnauthorized: false },
+    max: 3,
+  };
+}
+
 declare global {
   // eslint-disable-next-line no-var
   var __pgPool: Pool | undefined;
@@ -8,15 +23,7 @@ declare global {
 
 function getPool(): Pool {
   if (!global.__pgPool) {
-    global.__pgPool = new Pool({
-      host: process.env.POSTGRES_HOST,
-      port: 5432,
-      user: process.env.POSTGRES_USER,
-      password: process.env.POSTGRES_PASSWORD,
-      database: process.env.POSTGRES_DATABASE,
-      ssl: { rejectUnauthorized: false },
-      max: 3,
-    });
+    global.__pgPool = new Pool(parsePoolConfig());
   }
   return global.__pgPool;
 }

@@ -5,12 +5,13 @@ import { getGameState } from "@/lib/gameState";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const u = new URL(process.env.POSTGRES_URL ?? "");
   const pool = new Pool({
-    host: process.env.POSTGRES_HOST,
-    port: 5432,
-    user: process.env.POSTGRES_USER,
-    password: process.env.POSTGRES_PASSWORD,
-    database: process.env.POSTGRES_DATABASE,
+    host: u.hostname,
+    port: u.port ? parseInt(u.port) : 5432,
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    database: u.pathname.replace(/^\//, ""),
     ssl: { rejectUnauthorized: false },
   });
 

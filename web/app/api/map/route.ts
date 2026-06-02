@@ -3,13 +3,11 @@ import { getGameState } from "@/lib/gameState";
 
 export const dynamic = "force-dynamic";
 
-// Cache the fetched map image for 1 hour
-let cachedImage: Buffer | null = null;
+let cachedImage: Uint8Array | null = null;
 let cachedAt = 0;
 const CACHE_TTL = 3600 * 1000;
 
 export async function GET() {
-  // Serve from cache if fresh
   if (cachedImage && Date.now() - cachedAt < CACHE_TTL) {
     return new NextResponse(cachedImage, {
       headers: {
@@ -32,7 +30,7 @@ export async function GET() {
       return new NextResponse(`Server returned ${res.status}`, { status: 502 });
     }
 
-    const buf = Buffer.from(await res.arrayBuffer());
+    const buf = new Uint8Array(await res.arrayBuffer());
     cachedImage = buf;
     cachedAt = Date.now();
 

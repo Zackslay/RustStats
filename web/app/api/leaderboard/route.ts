@@ -16,7 +16,19 @@ export async function GET(req: NextRequest) {
   const wipeId = await getCurrentWipeId();
 
   const rows = await queryLeaderboard({ category, wipeId, wipeScope, search, limit });
-  const players = rows.map((r, i) => ({ rank: i + 1, ...r }));
+
+  // Postgres returns SUM()/BIGINT columns as strings — coerce stat fields to
+  // numbers so the client can do arithmetic / .toFixed() without crashing.
+  const NUM_FIELDS = [
+    "kills", "deaths", "headshots", "wood", "stone", "metal_ore", "sulfur_ore",
+    "structures_placed", "rockets_fired", "c4_thrown", "npc_kills",
+    "heli_hits", "bradley_hits", "playtime", "rating",
+  ];
+  const players = rows.map((r, i) => {
+    const out: Record<string, unknown> = { rank: i + 1, ...r };
+    for (const f of NUM_FIELDS) out[f] = Number(out[f] ?? 0);
+    return out;
+  });
 
   return NextResponse.json({ category, wipeScope, players });
 }

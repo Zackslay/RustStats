@@ -1,0 +1,79 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+:root {
+  --bg: #0f0f0f;
+  --surface: #161616;
+  --border: #2a2a2a;
+  --red: #dc2626;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: #0f0f0f;
+  color: #fff;
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Leaflet player marker ──────────────────────────────────────────── */
+.player-marker {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.5);
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.player-marker:hover { transform: scale(1.8); z-index: 1000 !important; }
+.player-label {
+  display: none;
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.85);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.player-marker:hover .player-label { display: block; }
+
+/* ── Leaflet event marker ────────────────────────────────────────────── */
+.event-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+}
+.event-emoji { font-size: 22px; line-height: 1; }
+.event-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0 4px #000;
+  background: rgba(0,0,0,0.6);
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.event-heli .event-emoji    { filter: drop-shadow(0 0 5px #ef4444); }
+.event-bradley .event-emoji { filter: drop-shadow(0 0 5px #f97316); }
+.event-cargo .event-emoji   { filter: drop-shadow(0 0 5px #60a5fa); }
+.event-chinook .event-emoji { filter: drop-shadow(0 0 5px #facc15); }
+
+/* ── Leaflet popup dark ──────────────────────────────────────────────── */
+.leaflet-popup-content-wrapper {
+  background: #1a1a1a !important;
+  color: #fff !important;
+  border: 1px solid #333 !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+}
+.leaflet-popup-tip { background: #1a1a1a !important; }

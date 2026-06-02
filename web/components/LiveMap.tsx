@@ -22,9 +22,12 @@ const EVENT_ICONS: Record<string, string> = {
 export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
+  const overlayRef = useRef<import("leaflet").ImageOverlay | null>(null);
   const markersRef = useRef<Map<string, import("leaflet").Marker>>(new Map());
   const eventMarkersRef = useRef<import("leaflet").Marker[]>([]);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
+
+  const BOUNDS: import("leaflet").LatLngBoundsExpression = [[0, 0], [1, 1]];
 
   // Rust coords → Leaflet LatLng
   // Rust: origin (0,0) = centre, +X = East, +Z = North (but Leaflet uses lat/lng)
@@ -44,14 +47,9 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
     });
   }, []);
 
-  // Init map once Leaflet is ready
+  // Init map once Leaflet is ready (runs once only)
   useEffect(() => {
     if (!leafletLoaded || !L || !containerRef.current || mapRef.current) return;
-
-    const bounds: import("leaflet").LatLngBoundsExpression = [
-      [0, 0],
-      [1, 1],
-    ];
 
     const map = L.map(containerRef.current, {
       crs: L.CRS.Simple,
@@ -61,20 +59,23 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
       attributionControl: false,
     });
 
-    if (mapImageUrl) {
-      L.imageOverlay(mapImageUrl, bounds).addTo(map);
-    } else {
-      // Fallback: dark tinted rectangle
-      L.rectangle(bounds, {
-        color: "#333",
-        fillColor: "#1a1a1a",
-        fillOpacity: 1,
-      }).addTo(map);
+    map.fitBounds(BOUNDS);
+    mapRef.current = map;
+  }, [leafletLoaded]);
+
+  // Update image overlay whenever mapImageUrl changes (including after first fetch)
+  useEffect(() => {
+    if (!mapRef.current || !L) return;
+
+    if (overlayRef.current) {
+      overlayRef.current.remove();
+      overlayRef.current = null;
     }
 
-    map.fitBounds(bounds);
-    mapRef.current = map;
-  }, [leafletLoaded, mapImageUrl]);
+    if (mapImageUrl) {
+      overlayRef.current = L.imageOverlay(mapImageUrl, BOUNDS).addTo(mapRef.current);
+    }
+  }, [mapImageUrl, leafletLoaded]);
 
   // Update player markers on state change
   useEffect(() => {

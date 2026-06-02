@@ -25,10 +25,12 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
 
   // ── Map calibration (aligns markers to the rendered map image) ────────────
+  // Defaults calibrated against world.rendermap output (it bakes in a ~9.2%
+  // ocean-margin border, so the playable world is inset on each edge).
   const [showCal, setShowCal] = useState(false);
-  const [margin, setMargin] = useState(0);
+  const [margin, setMargin] = useState(0.092);
   const [offX, setOffX] = useState(0);
-  const [offZ, setOffZ] = useState(0);
+  const [offZ, setOffZ] = useState(10);
 
   useEffect(() => {
     try {

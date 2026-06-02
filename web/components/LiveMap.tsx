@@ -31,6 +31,8 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
   const overlayRef = useRef<import("leaflet").ImageOverlay | null>(null);
   const markersRef = useRef<Map<string, import("leaflet").Marker>>(new Map());
   const eventMarkersRef = useRef<import("leaflet").Marker[]>([]);
+  const monumentMarkersRef = useRef<import("leaflet").Marker[]>([]);
+  const gridLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
 
   // Rust coords → Leaflet LatLng scaled to MAP_UNITS
@@ -152,7 +154,93 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
     }
   }, [state.events]);
 
+  // Draw the Rust coordinate grid (same transform as players, so it doubles as
+  // an alignment check against the rendered map underneath).
+  useEffect(() => {
+    if (!mapRef.current || !L || !mapSize) return;
+    const map = mapRef.current;
+
+    if (gridLayerRef.current) {
+      gridLayerRef.current.remove();
+      gridLayerRef.current = null;
+    }
+
+    const group = L!.layerGroup();
+    const cell = 146.86; // Rust grid cell size (meters)
+    const half = mapSize / 2;
+    const n = Math.floor(mapSize / cell); // cells per axis
+    const lineStyle = { color: "#ffffff", weight: 1, opacity: 0.12, interactive: false };
+
+    for (let i = 0; i <= n; i++) {
+      const x = -half + i * cell;
+      L!.polyline([rustToLatLng(x, -half), rustToLatLng(x, half)], lineStyle).addTo(group);
+      const z = half - i * cell; // top (north) → bottom (south)
+      L!.polyline([rustToLatLng(-half, z), rustToLatLng(half, z)], lineStyle).addTo(group);
+    }
+
+    // Column letters along the top, row numbers down the left.
+    for (let i = 0; i < n; i++) {
+      const colPos = rustToLatLng(-half + (i + 0.5) * cell, half - cell * 0.35);
+      L!.marker(colPos, {
+        interactive: false,
+        keyboard: false,
+        icon: L!.divIcon({ className: "", html: `<span class="grid-label">${colLabel(i)}</span>`, iconSize: [0, 0] }),
+      }).addTo(group);
+
+      const rowPos = rustToLatLng(-half + cell * 0.3, half - (i + 0.5) * cell);
+      L!.marker(rowPos, {
+        interactive: false,
+        keyboard: false,
+        icon: L!.divIcon({ className: "", html: `<span class="grid-label">${i}</span>`, iconSize: [0, 0] }),
+      }).addTo(group);
+    }
+
+    group.addTo(map);
+    gridLayerRef.current = group;
+  }, [mapSize, leafletLoaded]);
+
+  // Draw monument labels (static — sent by the plugin once loaded).
+  useEffect(() => {
+    if (!mapRef.current || !L) return;
+    const map = mapRef.current;
+
+    for (const m of monumentMarkersRef.current) m.remove();
+    monumentMarkersRef.current = [];
+
+    const monuments = state.server?.monuments ?? [];
+    for (const mon of monuments) {
+      const pos = rustToLatLng(mon.x, mon.z);
+      const icon = L!.divIcon({
+        className: "",
+        html: `<div class="monument-marker"><span class="monument-dot"></span><span class="monument-label">${escapeHtml(mon.name)}</span></div>`,
+        iconSize: [0, 0],
+        iconAnchor: [3, 3],
+      });
+      const marker = L!.marker(pos, { icon, interactive: false, keyboard: false }).addTo(map);
+      monumentMarkersRef.current.push(marker);
+    }
+    // Monuments are static; redraw only when they first arrive or the map rescales.
+  }, [state.server?.monuments?.length, mapSize, leafletLoaded]);
+
   return <div ref={containerRef} className="w-full h-full rounded-lg" />;
+}
+
+// 0 → A, 25 → Z, 26 → AA … (Rust column labels)
+function colLabel(i: number): string {
+  let s = "";
+  i += 1;
+  while (i > 0) {
+    const r = (i - 1) % 26;
+    s = String.fromCharCode(65 + r) + s;
+    i = Math.floor((i - 1) / 26);
+  }
+  return s;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] ?? c)
+  );
 }
 
 // Simple deterministic color per team id

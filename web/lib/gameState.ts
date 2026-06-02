@@ -31,6 +31,13 @@ export interface ServerInfo {
   mapUrl: string;
   wipeDate: number;
   updatedAt: number;
+  monuments?: Monument[];
+}
+
+export interface Monument {
+  name: string;
+  x: number;
+  z: number;
 }
 
 export interface GameState {

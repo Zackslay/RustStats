@@ -300,6 +300,34 @@ namespace Oxide.Plugins
             }
         }
 
+        // ── Monuments (static — gathered once, sent so the web map can label them
+        //    and so marker alignment can be visually verified) ──────────────────
+        private List<object> _monumentsCache;
+
+        private List<object> GetMonuments()
+        {
+            if (_monumentsCache != null) return _monumentsCache;
+
+            var list = new List<object>();
+            var monuments = TerrainMeta.Path?.Monuments;
+            if (monuments != null)
+            {
+                foreach (var m in monuments)
+                {
+                    if (m == null) continue;
+                    string name = m.displayPhrase.english;
+                    if (string.IsNullOrEmpty(name)) continue;
+                    name = name.Trim();
+                    var pos = m.transform.position;
+                    list.Add(new { name, x = pos.x, z = pos.z });
+                }
+            }
+
+            // Only cache once monuments have actually loaded.
+            if (list.Count > 0) _monumentsCache = list;
+            return list;
+        }
+
         // ── Live update (positions + events) ─────────────────────────────────
         private void SendLiveUpdate()
         {
@@ -319,7 +347,8 @@ namespace Oxide.Plugins
                 // A configured override (MapImageUrl) is used verbatim instead.
                 mapUrl = _cfg.MapImageUrl ?? "",
                 wipeDate = ((DateTimeOffset)SaveRestore.SaveCreatedTime).ToUnixTimeSeconds(),
-                updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                monuments = GetMonuments()
             };
 
             // Player positions

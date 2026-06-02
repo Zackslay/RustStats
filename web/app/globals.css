@@ -68,6 +68,39 @@ body {
 .event-cargo .event-emoji   { filter: drop-shadow(0 0 5px #60a5fa); }
 .event-chinook .event-emoji { filter: drop-shadow(0 0 5px #facc15); }
 
+/* ── Leaflet monument label ──────────────────────────────────────────── */
+.monument-marker {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.monument-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fbbf24;
+  border: 1px solid rgba(0,0,0,0.6);
+  flex-shrink: 0;
+}
+.monument-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #fde68a;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+  letter-spacing: 0.02em;
+}
+
+/* ── Leaflet grid ────────────────────────────────────────────────────── */
+.grid-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.45);
+  text-shadow: 0 0 2px #000;
+  pointer-events: none;
+}
+
 /* ── Leaflet popup dark ──────────────────────────────────────────────── */
 .leaflet-popup-content-wrapper {
   background: #1a1a1a !important;

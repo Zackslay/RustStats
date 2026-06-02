@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using Oxide.Core;
@@ -31,6 +32,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Batch stat flush interval (seconds)")]
             public float StatFlushInterval { get; set; } = 10f;
+
+            [JsonProperty("Rust+ App Port (for map image)")]
+            public int AppPort { get; set; } = 28082;
         }
 
         protected override void LoadConfig()
@@ -96,8 +100,8 @@ namespace Oxide.Plugins
                 maxPlayers = ConVar.Server.maxplayers,
                 mapSeed = World.Seed,
                 mapSize = (int)World.Size,
-                mapUrl = $"https://rustmaps.com/img/maps/{World.Seed}_{(int)World.Size}.png",
-                wipeDate = SaveRestore.SaveCreatedTime.ToUnixTime(),
+                mapUrl = $"http://{ConVar.Server.ip}:{_cfg.AppPort}/map/api/v1/mapimageraw",
+                wipeDate = ((DateTimeOffset)SaveRestore.SaveCreatedTime).ToUnixTimeSeconds(),
                 updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             };
 

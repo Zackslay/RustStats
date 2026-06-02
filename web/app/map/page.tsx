@@ -43,7 +43,8 @@ export default function MapPage() {
   }, [fetchState]);
 
   const mapSize = (state.wipe?.map_size as number) ?? state.server?.mapSize ?? 3500;
-  const mapUrl = (state.wipe?.map_url as string) ?? state.server?.mapUrl ?? "";
+  // Use our proxy route so the raw server IP/port is never exposed to the browser
+  const mapUrl = state.server?.mapUrl ? "/api/map" : "";
   const onlinePlayers = Object.values(state.players).filter((p) => p.online);
   const server = state.server;
 

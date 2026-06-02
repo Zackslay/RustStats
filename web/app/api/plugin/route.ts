@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@vercel/postgres";
 import {
   getGameState,
   updateGameState,
@@ -37,13 +36,17 @@ export async function POST(req: NextRequest) {
 
     const s = body.server as { mapSeed?: number; mapSize?: number; mapUrl?: string };
     if (s.mapSeed || s.mapUrl) {
-      await sql`
-        UPDATE wipes SET
-          map_seed = COALESCE(${s.mapSeed ?? null}, map_seed),
-          map_size = COALESCE(${s.mapSize ?? null}, map_size),
-          map_url  = CASE WHEN ${s.mapUrl ?? ""} <> '' THEN ${s.mapUrl ?? ""} ELSE map_url END
-        WHERE is_current = TRUE
-      `;
+      const { Pool } = await import("pg");
+      const pool = new Pool({ connectionString: process.env.POSTGRES_URL, ssl: { rejectUnauthorized: false } });
+      await pool.query(
+        `UPDATE wipes SET
+           map_seed = COALESCE($1, map_seed),
+           map_size = COALESCE($2, map_size),
+           map_url  = CASE WHEN $3 <> '' THEN $3 ELSE map_url END
+         WHERE is_current = TRUE`,
+        [s.mapSeed ?? null, s.mapSize ?? null, s.mapUrl ?? ""]
+      );
+      await pool.end();
     }
   }
 
@@ -92,15 +95,16 @@ export async function POST(req: NextRequest) {
       (body.kills as Array<{
         killerId: string; victimId: string; weapon: string;
         headshot: boolean; timestamp?: number;
-      }>).map((k) =>
-        sql`
-          INSERT INTO kill_log (wipe_id, killer_id, victim_id, weapon, headshot, ts)
-          VALUES (
-            ${activeWipeId}, ${k.killerId}, ${k.victimId},
-            ${k.weapon ?? ""}, ${k.headshot}, ${k.timestamp ?? Math.floor(Date.now() / 1000)}
-          )
-        `
-      )
+      }>).map(async (k) => {
+        const { Pool } = await import("pg");
+        const pool = new Pool({ connectionString: process.env.POSTGRES_URL, ssl: { rejectUnauthorized: false } });
+        await pool.query(
+          `INSERT INTO kill_log (wipe_id, killer_id, victim_id, weapon, headshot, ts)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [activeWipeId, k.killerId, k.victimId, k.weapon ?? "", k.headshot, k.timestamp ?? Math.floor(Date.now() / 1000)]
+        );
+        await pool.end();
+      })
     );
   }
 

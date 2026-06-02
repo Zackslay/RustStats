@@ -1,4 +1,4 @@
-import { sql } from "@vercel/postgres";
+import { Pool } from "pg";
 
 export interface PlayerPosition {
   steamId: string;
@@ -40,6 +40,22 @@ export interface GameState {
   lastUpdate: number;
 }
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __pgPool: Pool | undefined;
+}
+
+function getPool(): Pool {
+  if (!global.__pgPool) {
+    global.__pgPool = new Pool({
+      connectionString: process.env.POSTGRES_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 5,
+    });
+  }
+  return global.__pgPool;
+}
+
 const STATE_KEY = "game_state";
 
 function makeInitial(): GameState {
@@ -48,10 +64,12 @@ function makeInitial(): GameState {
 
 export async function getGameState(): Promise<GameState> {
   try {
-    const { rows } = await sql`
-      SELECT value FROM live_state WHERE key = ${STATE_KEY}
-    `;
-    return rows.length > 0 ? (rows[0].value as GameState) : makeInitial();
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT value FROM live_state WHERE key = $1`,
+      [STATE_KEY]
+    );
+    return res.rows.length > 0 ? (res.rows[0].value as GameState) : makeInitial();
   } catch {
     return makeInitial();
   }
@@ -60,33 +78,29 @@ export async function getGameState(): Promise<GameState> {
 export async function updateGameState(patch: Partial<GameState>): Promise<void> {
   const current = await getGameState();
   const next: GameState = { ...current, ...patch, lastUpdate: Date.now() };
-  const json = JSON.stringify(next);
-  await sql`
-    INSERT INTO live_state (key, value, updated_at)
-    VALUES (${STATE_KEY}, ${json}::jsonb, NOW())
-    ON CONFLICT (key) DO UPDATE SET
-      value      = EXCLUDED.value,
-      updated_at = NOW()
-  `;
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO live_state (key, value, updated_at)
+     VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [STATE_KEY, JSON.stringify(next)]
+  );
 }
 
-// Merge only the players map (avoids a read-modify-write race for position updates)
 export async function mergePlayers(
   incoming: Record<string, PlayerPosition>
 ): Promise<void> {
-  // We do a full read here — plugin pushes are the only writer so races are rare
   const current = await getGameState();
   const next: GameState = {
     ...current,
     players: { ...current.players, ...incoming },
     lastUpdate: Date.now(),
   };
-  const json = JSON.stringify(next);
-  await sql`
-    INSERT INTO live_state (key, value, updated_at)
-    VALUES (${STATE_KEY}, ${json}::jsonb, NOW())
-    ON CONFLICT (key) DO UPDATE SET
-      value      = EXCLUDED.value,
-      updated_at = NOW()
-  `;
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO live_state (key, value, updated_at)
+     VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [STATE_KEY, JSON.stringify(next)]
+  );
 }

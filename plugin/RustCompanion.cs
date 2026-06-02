@@ -35,6 +35,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Rust+ App Port (for map image)")]
             public int AppPort { get; set; } = 28082;
+
+            [JsonProperty("Map Image URL (overrides auto-fetch if set)")]
+            public string MapImageUrl { get; set; } = "";
         }
 
         protected override void LoadConfig()
@@ -79,7 +82,10 @@ namespace Oxide.Plugins
             LoadConfig();
             timer.Every(_cfg.UpdateInterval, SendLiveUpdate);
             timer.Every(_cfg.StatFlushInterval, FlushStats);
-            timer.Once(60f, TryUploadMap); // give Rust+ service time to start
+            if (string.IsNullOrEmpty(_cfg.MapImageUrl))
+                timer.Once(60f, TryUploadMap);
+            else
+                Puts($"[RustCompanion] Using configured map image URL.");
             Puts($"[RustCompanion] Streaming to {_cfg.DashboardUrl}");
         }
 
@@ -171,9 +177,11 @@ namespace Oxide.Plugins
                 maxPlayers = ConVar.Server.maxplayers,
                 mapSeed = World.Seed,
                 mapSize = (int)World.Size,
-                mapUrl = !string.IsNullOrEmpty(ConVar.Server.levelurl)
-                    ? ConVar.Server.levelurl.Replace(".map", ".png")
-                    : $"https://rustmaps.com/img/maps/{World.Seed}_{(int)World.Size}_vegetation.png",
+                mapUrl = !string.IsNullOrEmpty(_cfg.MapImageUrl)
+                    ? _cfg.MapImageUrl
+                    : (!string.IsNullOrEmpty(ConVar.Server.levelurl)
+                        ? ConVar.Server.levelurl.Replace(".map", ".png")
+                        : $"https://rustmaps.com/img/maps/{World.Seed}_{(int)World.Size}_vegetation.png"),
                 wipeDate = ((DateTimeOffset)SaveRestore.SaveCreatedTime).ToUnixTimeSeconds(),
                 updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             };

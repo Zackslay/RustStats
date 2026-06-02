@@ -90,14 +90,13 @@ namespace Oxide.Plugins
         private void DownloadAndUploadMap()
         {
             Puts("[RustCompanion] Downloading map image from localhost...");
-            System.Threading.Tasks.Task.Run(async () =>
+            System.Threading.Tasks.Task.Run(() =>
             {
                 try
                 {
-                    using (var http = new System.Net.Http.HttpClient())
+                    using (var client = new System.Net.WebClient())
                     {
-                        http.Timeout = TimeSpan.FromSeconds(30);
-                        var bytes = await http.GetByteArrayAsync($"http://localhost:{_cfg.AppPort}/map/api/v1/mapimageraw");
+                        var bytes = client.DownloadData($"http://localhost:{_cfg.AppPort}/map/api/v1/mapimageraw");
                         var base64 = Convert.ToBase64String(bytes);
                         Puts($"[RustCompanion] Map downloaded ({bytes.Length / 1024}KB), uploading...");
 

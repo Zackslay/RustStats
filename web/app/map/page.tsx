@@ -43,8 +43,14 @@ export default function MapPage() {
   }, [fetchState]);
 
   const mapSize = (state.wipe?.map_size as number) ?? state.server?.mapSize ?? 3500;
-  // Use our proxy route so the raw server IP/port is never exposed to the browser
-  const mapUrl = state.server?.mapUrl ? "/api/map" : "";
+  // Proxy localhost URLs (Rust+ app port) through /api/map so the server IP is
+  // never exposed; use external URLs (configured overrides, rustmaps.com, etc.) directly.
+  const rawMapUrl = state.server?.mapUrl ?? "";
+  const mapUrl = rawMapUrl
+    ? rawMapUrl.startsWith("http://localhost")
+      ? "/api/map"
+      : rawMapUrl
+    : "";
   const onlinePlayers = Object.values(state.players).filter((p) => p.online);
   const server = state.server;
 

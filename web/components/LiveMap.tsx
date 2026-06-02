@@ -19,6 +19,12 @@ const EVENT_ICONS: Record<string, string> = {
   chinook: "🚁",
 };
 
+// CRS.Simple treats coordinates as CSS pixels at zoom 0.
+// Bounds of [[0,0],[1,1]] = 1×1 pixel — way too small for fitBounds.
+// Scale to [0,MAP_UNITS] so Leaflet can find a reasonable initial zoom.
+const MAP_UNITS = 1000;
+const BOUNDS: [[number, number], [number, number]] = [[0, 0], [MAP_UNITS, MAP_UNITS]];
+
 export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
@@ -27,14 +33,11 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
   const eventMarkersRef = useRef<import("leaflet").Marker[]>([]);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
 
-  const BOUNDS: import("leaflet").LatLngBoundsExpression = [[0, 0], [1, 1]];
-
-  // Rust coords → Leaflet LatLng
-  // Rust: origin (0,0) = centre, +X = East, +Z = North (but Leaflet uses lat/lng)
+  // Rust coords → Leaflet LatLng scaled to MAP_UNITS
   function rustToLatLng(x: number, z: number): [number, number] {
     const half = mapSize / 2;
-    const lat = (z + half) / mapSize; // 0..1, north is higher
-    const lng = (x + half) / mapSize; // 0..1
+    const lat = ((z + half) / mapSize) * MAP_UNITS;
+    const lng = ((x + half) / mapSize) * MAP_UNITS;
     return [lat, lng];
   }
 
@@ -53,7 +56,7 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
 
     const map = L.map(containerRef.current, {
       crs: L.CRS.Simple,
-      minZoom: -2,
+      minZoom: -3,
       maxZoom: 4,
       zoomSnap: 0.25,
       attributionControl: false,
@@ -74,6 +77,7 @@ export default function LiveMap({ mapSize, mapImageUrl, state }: Props) {
 
     if (mapImageUrl) {
       overlayRef.current = L.imageOverlay(mapImageUrl, BOUNDS).addTo(mapRef.current);
+      mapRef.current.fitBounds(BOUNDS);
     }
   }, [mapImageUrl, leafletLoaded]);
 

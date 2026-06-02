@@ -9,7 +9,11 @@ declare global {
 function getPool(): Pool {
   if (!global.__pgPool) {
     global.__pgPool = new Pool({
-      connectionString: process.env.POSTGRES_URL_NON_POOLING ?? process.env.POSTGRES_URL,
+      host: process.env.POSTGRES_HOST,
+      port: 5432,
+      user: process.env.POSTGRES_USER,
+      password: process.env.POSTGRES_PASSWORD,
+      database: process.env.POSTGRES_DATABASE,
       ssl: { rejectUnauthorized: false },
       max: 3,
     });

@@ -62,9 +62,12 @@ export async function initSchema() {
       map_seed   BIGINT,
       map_size   INTEGER,
       map_url    TEXT NOT NULL DEFAULT '',
+      map_image  TEXT NOT NULL DEFAULT '',
       is_current BOOLEAN NOT NULL DEFAULT TRUE
     )
   `);
+  // Add column to existing tables that were created before this field existed
+  await exec(`ALTER TABLE wipes ADD COLUMN IF NOT EXISTS map_image TEXT NOT NULL DEFAULT ''`);
   await exec(`
     CREATE TABLE IF NOT EXISTS player_stats (
       id                SERIAL PRIMARY KEY,

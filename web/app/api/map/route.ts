@@ -1,47 +1,44 @@
 import { NextResponse } from "next/server";
-import { getGameState } from "@/lib/gameState";
+import { Pool } from "pg";
 
 export const dynamic = "force-dynamic";
 
-let cachedBlob: Blob | null = null;
-let cachedAt = 0;
-const CACHE_TTL = 3600 * 1000;
+function makePool() {
+  const u = new URL(process.env.POSTGRES_URL ?? "");
+  return new Pool({
+    host: u.hostname,
+    port: u.port ? parseInt(u.port) : 5432,
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    database: u.pathname.replace(/^\//, ""),
+    ssl: { rejectUnauthorized: false },
+  });
+}
 
 export async function GET() {
-  if (cachedBlob && Date.now() - cachedAt < CACHE_TTL) {
-    return new NextResponse(cachedBlob, {
+  const pool = makePool();
+  try {
+    const res = await pool.query(
+      `SELECT map_image FROM wipes WHERE is_current = TRUE LIMIT 1`
+    );
+    const base64 = res.rows[0]?.map_image;
+
+    if (!base64) {
+      return new NextResponse("Map not uploaded yet — plugin will upload on next server start", {
+        status: 404,
+      });
+    }
+
+    const bytes = Buffer.from(base64, "base64");
+    const blob = new Blob([bytes], { type: "image/png" });
+
+    return new NextResponse(blob, {
       headers: {
         "Content-Type": "image/png",
         "Cache-Control": "public, max-age=3600",
       },
     });
-  }
-
-  const state = await getGameState();
-  const mapUrl = state.server?.mapUrl;
-
-  if (!mapUrl) {
-    return new NextResponse("No map URL available yet", { status: 404 });
-  }
-
-  try {
-    const res = await fetch(mapUrl, { signal: AbortSignal.timeout(15000) });
-    if (!res.ok) {
-      return new NextResponse(`Upstream returned ${res.status}`, { status: 502 });
-    }
-
-    const blob = await res.blob();
-    cachedBlob = blob;
-    cachedAt = Date.now();
-
-    return new NextResponse(blob, {
-      headers: {
-        "Content-Type": blob.type || "image/png",
-        "Cache-Control": "public, max-age=3600",
-      },
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return new NextResponse(`Failed to fetch map: ${msg}`, { status: 502 });
+  } finally {
+    await pool.end();
   }
 }

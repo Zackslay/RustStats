@@ -77,12 +77,54 @@ namespace Oxide.Plugins
             LoadConfig();
             timer.Every(_cfg.UpdateInterval, SendLiveUpdate);
             timer.Every(_cfg.StatFlushInterval, FlushStats);
+            timer.Once(10f, DownloadAndUploadMap);
             Puts($"[RustCompanion] Streaming to {_cfg.DashboardUrl}");
         }
 
         private void Unload()
         {
-            FlushStats(); // send any remaining deltas
+            FlushStats();
+        }
+
+        // ── Map image upload ──────────────────────────────────────────────────
+        private void DownloadAndUploadMap()
+        {
+            Puts("[RustCompanion] Downloading map image from localhost...");
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    using (var http = new System.Net.Http.HttpClient())
+                    {
+                        http.Timeout = TimeSpan.FromSeconds(30);
+                        var bytes = await http.GetByteArrayAsync($"http://localhost:{_cfg.AppPort}/map/api/v1/mapimageraw");
+                        var base64 = Convert.ToBase64String(bytes);
+                        Puts($"[RustCompanion] Map downloaded ({bytes.Length / 1024}KB), uploading...");
+
+                        NextTick(() =>
+                        {
+                            var json = JsonConvert.SerializeObject(new { mapImage = base64 });
+                            var headers = new Dictionary<string, string>
+                            {
+                                ["Content-Type"] = "application/json",
+                                ["x-plugin-secret"] = _cfg.PluginSecret
+                            };
+                            webrequest.Enqueue(
+                                _cfg.DashboardUrl + "/api/map/upload",
+                                json,
+                                (code, resp) => Puts(code == 200
+                                    ? "[RustCompanion] Map uploaded OK"
+                                    : $"[RustCompanion] Map upload failed: {code} {resp}"),
+                                this, RequestMethod.POST, headers, 120f
+                            );
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Puts($"[RustCompanion] Map download error: {ex.Message}");
+                }
+            });
         }
 
         // ── Live update (positions + events) ─────────────────────────────────
@@ -100,7 +142,9 @@ namespace Oxide.Plugins
                 maxPlayers = ConVar.Server.maxplayers,
                 mapSeed = World.Seed,
                 mapSize = (int)World.Size,
-                mapUrl = $"https://rustmaps.com/img/maps/{World.Seed}_{(int)World.Size}_vegetation.png",
+                mapUrl = !string.IsNullOrEmpty(ConVar.Server.levelurl)
+                    ? ConVar.Server.levelurl.Replace(".map", ".png")
+                    : $"https://rustmaps.com/img/maps/{World.Seed}_{(int)World.Size}_vegetation.png",
                 wipeDate = ((DateTimeOffset)SaveRestore.SaveCreatedTime).ToUnixTimeSeconds(),
                 updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             };

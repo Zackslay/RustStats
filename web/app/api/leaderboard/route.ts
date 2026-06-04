@@ -23,7 +23,8 @@ export async function GET(req: NextRequest) {
   const NUM_FIELDS = [
     "kills", "deaths", "headshots", "wood", "stone", "metal_ore", "sulfur_ore",
     "structures_placed", "rockets_fired", "c4_thrown", "npc_kills",
-    "heli_hits", "bradley_hits", "playtime", "rating",
+    "heli_hits", "bradley_hits", "scientist_kills", "animal_kills",
+    "heli_kills", "bradley_kills", "playtime", "rating",
   ];
   const players = rows.map((r, i) => {
     const out: Record<string, unknown> = { rank: i + 1, ...r };

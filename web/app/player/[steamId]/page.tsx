@@ -55,8 +55,6 @@ export default function PlayerPage() {
   }, [refresh]);
 
   const t = profile?.[scope] ?? {};
-  const kd = (t.deaths ?? 0) > 0 ? ((t.kills ?? 0) / t.deaths).toFixed(2) : (t.kills ?? 0).toFixed(2);
-  const hsRate = (t.kills ?? 0) > 0 ? Math.round(((t.headshots ?? 0) / t.kills) * 100) : 0;
   const gathered = (t.wood ?? 0) + (t.stone ?? 0) + (t.metal_ore ?? 0) + (t.sulfur_ore ?? 0);
 
   return (
@@ -114,20 +112,20 @@ export default function PlayerPage() {
               </div>
             </section>
 
-            {/* Stat grid */}
+            {/* Stat grid (PvE-focused) */}
             <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Stat label="Rating" value={t.rating ?? 0} accent="text-yellow-400" />
-              <Stat label="Kills" value={t.kills ?? 0} />
-              <Stat label="Deaths" value={t.deaths ?? 0} />
-              <Stat label="K/D" value={kd} />
-              <Stat label="Headshots" value={`${t.headshots ?? 0} (${hsRate}%)`} />
-              <Stat label="NPC Kills" value={t.npc_kills ?? 0} />
-              <Stat label="Heli Hits" value={t.heli_hits ?? 0} />
-              <Stat label="Bradley Hits" value={t.bradley_hits ?? 0} />
+              <Stat label="Heli Kills" value={t.heli_kills ?? 0} accent="text-red-400" />
+              <Stat label="Bradley Kills" value={t.bradley_kills ?? 0} accent="text-orange-400" />
+              <Stat label="Animals" value={t.animal_kills ?? 0} accent="text-green-400" />
+              <Stat label="Scientists" value={t.scientist_kills ?? 0} accent="text-cyan-400" />
+              <Stat label="Other NPCs" value={t.npc_kills ?? 0} />
               <Stat label="Gathered" value={gathered.toLocaleString()} />
               <Stat label="Structures" value={(t.structures_placed ?? 0).toLocaleString()} />
-              <Stat label="Rockets / C4" value={`${t.rockets_fired ?? 0} / ${t.c4_thrown ?? 0}`} />
               <Stat label="Playtime" value={formatPlaytime(t.playtime ?? 0)} />
+              <Stat label="PvP Kills" value={t.kills ?? 0} />
+              <Stat label="Deaths" value={t.deaths ?? 0} />
+              <Stat label="Rockets / C4" value={`${t.rockets_fired ?? 0} / ${t.c4_thrown ?? 0}`} />
             </section>
 
             {/* Gathering breakdown */}

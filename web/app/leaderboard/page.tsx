@@ -21,20 +21,24 @@ interface PlayerRow {
   npc_kills: number;
   heli_hits: number;
   bradley_hits: number;
+  scientist_kills: number;
+  animal_kills: number;
+  heli_kills: number;
+  bradley_kills: number;
   playtime: number;
   rating: number;
 }
 
-type Category = "overall" | "pvp" | "gathering" | "explosives" | "building" | "npc";
+type Category = "overall" | "npc" | "hunting" | "events" | "gathering" | "building";
 type WipeScope = "current" | "lifetime";
 
 const CATEGORIES: { id: Category; label: string; icon: string }[] = [
   { id: "overall", label: "Overall", icon: "🏆" },
-  { id: "pvp", label: "PvP", icon: "⚔️" },
+  { id: "npc", label: "Scientists & NPCs", icon: "☣️" },
+  { id: "hunting", label: "Hunting", icon: "🏹" },
+  { id: "events", label: "Heli / Bradley", icon: "🚁" },
   { id: "gathering", label: "Gathering", icon: "⛏️" },
-  { id: "explosives", label: "Explosives", icon: "💣" },
   { id: "building", label: "Building", icon: "🏗️" },
-  { id: "npc", label: "NPC / Events", icon: "🤖" },
 ];
 
 export default function LeaderboardPage() {
@@ -64,10 +68,6 @@ export default function LeaderboardPage() {
     const id = setInterval(fetchLeaderboard, 15000);
     return () => clearInterval(id);
   }, [fetchLeaderboard]);
-
-  function kd(row: PlayerRow) {
-    return row.deaths > 0 ? (row.kills / row.deaths).toFixed(2) : row.kills.toFixed(2);
-  }
 
   function totalGathered(row: PlayerRow) {
     return (row.wood + row.stone + row.metal_ore + row.sulfur_ore).toLocaleString();
@@ -180,18 +180,28 @@ export default function LeaderboardPage() {
                 <th className="px-4 py-3 text-right">Time</th>
                 {category === "overall" && (
                   <>
-                    <th className="px-4 py-3 text-right">Kills</th>
-                    <th className="px-4 py-3 text-right">Deaths</th>
-                    <th className="px-4 py-3 text-right">K/D</th>
+                    <th className="px-4 py-3 text-right">Scientists</th>
+                    <th className="px-4 py-3 text-right">Animals</th>
+                    <th className="px-4 py-3 text-right">Heli</th>
+                    <th className="px-4 py-3 text-right">Bradley</th>
                     <th className="px-4 py-3 text-right text-yellow-500">Rating</th>
                   </>
                 )}
-                {category === "pvp" && (
+                {category === "npc" && (
                   <>
-                    <th className="px-4 py-3 text-right">Kills</th>
-                    <th className="px-4 py-3 text-right">Headshots</th>
-                    <th className="px-4 py-3 text-right">Deaths</th>
-                    <th className="px-4 py-3 text-right">K/D</th>
+                    <th className="px-4 py-3 text-right">Scientists</th>
+                    <th className="px-4 py-3 text-right">Other NPCs</th>
+                    <th className="px-4 py-3 text-right">Total</th>
+                  </>
+                )}
+                {category === "hunting" && (
+                  <th className="px-4 py-3 text-right">Animals Killed</th>
+                )}
+                {category === "events" && (
+                  <>
+                    <th className="px-4 py-3 text-right">Heli Kills</th>
+                    <th className="px-4 py-3 text-right">Bradley Kills</th>
+                    <th className="px-4 py-3 text-right">Total</th>
                   </>
                 )}
                 {category === "gathering" && (
@@ -203,22 +213,8 @@ export default function LeaderboardPage() {
                     <th className="px-4 py-3 text-right">Total</th>
                   </>
                 )}
-                {category === "explosives" && (
-                  <>
-                    <th className="px-4 py-3 text-right">Rockets</th>
-                    <th className="px-4 py-3 text-right">C4</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                  </>
-                )}
                 {category === "building" && (
                   <th className="px-4 py-3 text-right">Structures</th>
-                )}
-                {category === "npc" && (
-                  <>
-                    <th className="px-4 py-3 text-right">NPC Kills</th>
-                    <th className="px-4 py-3 text-right">Heli Hits</th>
-                    <th className="px-4 py-3 text-right">Bradley Hits</th>
-                  </>
                 )}
               </tr>
             </thead>
@@ -276,18 +272,28 @@ export default function LeaderboardPage() {
 
                   {category === "overall" && (
                     <>
-                      <td className="px-4 py-3 text-right">{p.kills}</td>
-                      <td className="px-4 py-3 text-right text-gray-400">{p.deaths}</td>
-                      <td className="px-4 py-3 text-right text-gray-300">{kd(p)}</td>
+                      <td className="px-4 py-3 text-right text-cyan-400">{p.scientist_kills}</td>
+                      <td className="px-4 py-3 text-right text-green-400">{p.animal_kills}</td>
+                      <td className="px-4 py-3 text-right text-red-400">{p.heli_kills}</td>
+                      <td className="px-4 py-3 text-right text-orange-400">{p.bradley_kills}</td>
                       <td className="px-4 py-3 text-right font-bold text-yellow-400">{p.rating}</td>
                     </>
                   )}
-                  {category === "pvp" && (
+                  {category === "npc" && (
                     <>
-                      <td className="px-4 py-3 text-right font-medium">{p.kills}</td>
-                      <td className="px-4 py-3 text-right text-orange-400">{p.headshots}</td>
-                      <td className="px-4 py-3 text-right text-gray-400">{p.deaths}</td>
-                      <td className="px-4 py-3 text-right">{kd(p)}</td>
+                      <td className="px-4 py-3 text-right text-cyan-400">{p.scientist_kills}</td>
+                      <td className="px-4 py-3 text-right">{p.npc_kills}</td>
+                      <td className="px-4 py-3 text-right font-medium">{p.scientist_kills + p.npc_kills}</td>
+                    </>
+                  )}
+                  {category === "hunting" && (
+                    <td className="px-4 py-3 text-right font-medium text-green-400">{p.animal_kills}</td>
+                  )}
+                  {category === "events" && (
+                    <>
+                      <td className="px-4 py-3 text-right text-red-400">{p.heli_kills}</td>
+                      <td className="px-4 py-3 text-right text-orange-400">{p.bradley_kills}</td>
+                      <td className="px-4 py-3 text-right font-medium">{p.heli_kills + p.bradley_kills}</td>
                     </>
                   )}
                   {category === "gathering" && (
@@ -299,22 +305,8 @@ export default function LeaderboardPage() {
                       <td className="px-4 py-3 text-right font-medium">{totalGathered(p)}</td>
                     </>
                   )}
-                  {category === "explosives" && (
-                    <>
-                      <td className="px-4 py-3 text-right">{p.rockets_fired}</td>
-                      <td className="px-4 py-3 text-right">{p.c4_thrown}</td>
-                      <td className="px-4 py-3 text-right font-medium">{p.rockets_fired + p.c4_thrown}</td>
-                    </>
-                  )}
                   {category === "building" && (
                     <td className="px-4 py-3 text-right font-medium">{p.structures_placed.toLocaleString()}</td>
-                  )}
-                  {category === "npc" && (
-                    <>
-                      <td className="px-4 py-3 text-right">{p.npc_kills}</td>
-                      <td className="px-4 py-3 text-right text-red-400">{p.heli_hits}</td>
-                      <td className="px-4 py-3 text-right text-orange-400">{p.bradley_hits}</td>
-                    </>
                   )}
                 </tr>
               ))}

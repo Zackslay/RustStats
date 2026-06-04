@@ -69,6 +69,8 @@ namespace Oxide.Plugins
             public int Wood, Stone, MetalOre, SulfurOre;
             public int StructuresPlaced, RocketsFired, C4Thrown;
             public int NpcKills, HeliHits, BradleyHits;
+            // PvE-focused
+            public int ScientistKills, AnimalKills, HeliKills, BradleyKills;
             public int Playtime; // seconds since last flush
         }
 
@@ -439,6 +441,10 @@ namespace Oxide.Plugins
                     npcKills = d.NpcKills,
                     heliHits = d.HeliHits,
                     bradleyHits = d.BradleyHits,
+                    scientistKills = d.ScientistKills,
+                    animalKills = d.AnimalKills,
+                    heliKills = d.HeliKills,
+                    bradleyKills = d.BradleyKills,
                     playtime = d.Playtime
                 });
             }
@@ -486,45 +492,59 @@ namespace Oxide.Plugins
             if (entity is BaseEntity be && IsEventEntity(entity)) _trackedEvents.Add(be);
         }
 
-        // ── Hooks: PvP ────────────────────────────────────────────────────────
+        // ── Hooks: Deaths (players, animals, heli/bradley kills) ───────────────
+        // Note: NPCPlayer deaths route to the NPCPlayer overload below (Oxide
+        // dispatches the most-specific overload), so here `entity` is a real
+        // player, an animal, or a vehicle/boss entity — never an NPC humanoid.
         private void OnEntityDeath(BaseCombatEntity entity, HitInfo info)
         {
-            if (entity == null || info == null) return;
+            if (entity == null) return;
+            var killer = info?.InitiatorPlayer;
 
-            var victim = entity as BasePlayer;
-            var killer = info.InitiatorPlayer;
-
-            if (victim != null && killer != null && killer != victim)
+            // Player victim (PvP / environmental death)
+            if (entity is BasePlayer victim && !(entity is NPCPlayer))
             {
-                // Player killed by player
-                GetOrAdd(killer).Kills++;
-                GetOrAdd(victim).Deaths++;
-                if (info.isHeadshot) GetOrAdd(killer).Headshots++;
-
-                var deathPos = victim.transform.position;
-                _pendingKills.Add(new KillEntry
+                if (killer != null && killer != victim)
                 {
-                    KillerId = killer.UserIDString,
-                    VictimId = victim.UserIDString,
-                    Weapon = info.Weapon?.ShortPrefabName ?? "",
-                    Headshot = info.isHeadshot,
-                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                    X = deathPos.x,
-                    Z = deathPos.z
-                });
+                    GetOrAdd(killer).Kills++;
+                    GetOrAdd(victim).Deaths++;
+                    if (info != null && info.isHeadshot) GetOrAdd(killer).Headshots++;
+
+                    var deathPos = victim.transform.position;
+                    _pendingKills.Add(new KillEntry
+                    {
+                        KillerId = killer.UserIDString,
+                        VictimId = victim.UserIDString,
+                        Weapon = info?.Weapon?.ShortPrefabName ?? "",
+                        Headshot = info != null && info.isHeadshot,
+                        Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                        X = deathPos.x,
+                        Z = deathPos.z
+                    });
+                }
+                else
+                {
+                    GetOrAdd(victim).Deaths++;
+                }
+                return;
             }
-            else if (victim != null && (killer == null || killer == victim))
-            {
-                // Death (suicide / fall / fire)
-                GetOrAdd(victim).Deaths++;
-            }
+
+            // PvE kills need a player killer.
+            if (killer == null) return;
+            if (entity is BaseAnimalNPC) GetOrAdd(killer).AnimalKills++;
+            else if (entity is PatrolHelicopter) GetOrAdd(killer).HeliKills++;
+            else if (entity is BradleyAPC) GetOrAdd(killer).BradleyKills++;
         }
 
-        // ── Hooks: NPC / Events ───────────────────────────────────────────────
+        // ── Hooks: NPC humanoid kills (scientists vs other) ────────────────────
         private void OnEntityDeath(NPCPlayer npc, HitInfo info)
         {
-            if (info?.InitiatorPlayer == null) return;
-            GetOrAdd(info.InitiatorPlayer).NpcKills++;
+            var killer = info?.InitiatorPlayer;
+            if (killer == null) return;
+            var d = GetOrAdd(killer);
+            var prefab = npc?.ShortPrefabName ?? "";
+            if (prefab.Contains("scientist")) d.ScientistKills++;
+            else d.NpcKills++;
         }
 
         private void OnEntityTakeDamage(PatrolHelicopter heli, HitInfo info)

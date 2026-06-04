@@ -100,6 +100,8 @@ export async function POST(req: NextRequest) {
           structuresPlaced: d.structuresPlaced, rocketsFired: d.rocketsFired,
           c4Thrown: d.c4Thrown, npcKills: d.npcKills,
           heliHits: d.heliHits, bradleyHits: d.bradleyHits, playtime: d.playtime,
+          scientistKills: d.scientistKills, animalKills: d.animalKills,
+          heliKills: d.heliKills, bradleyKills: d.bradleyKills,
         });
       })
     );

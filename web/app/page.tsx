@@ -19,11 +19,12 @@ interface TopRow {
 
 interface Totals {
   players: number;
-  kills: number;
+  npcKills: number;
+  animalKills: number;
+  bossKills: number;
   gathered: number;
   structures: number;
   playtime: number;
-  explosives: number;
 }
 
 export default function Home() {
@@ -103,10 +104,10 @@ export default function Home() {
         {totals && (
           <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <Stat label="Players" value={totals.players.toLocaleString()} />
-            <Stat label="Kills" value={totals.kills.toLocaleString()} />
+            <Stat label="NPC Kills" value={totals.npcKills.toLocaleString()} />
+            <Stat label="Animals" value={totals.animalKills.toLocaleString()} />
+            <Stat label="Heli/Bradley" value={totals.bossKills.toLocaleString()} />
             <Stat label="Gathered" value={compact(totals.gathered)} />
-            <Stat label="Structures" value={compact(totals.structures)} />
-            <Stat label="Explosives" value={totals.explosives.toLocaleString()} />
             <Stat label="Playtime" value={formatPlaytime(totals.playtime)} />
           </section>
         )}
@@ -137,8 +138,7 @@ export default function Home() {
                     <Link href={`/player/${p.steam_id}`} className="text-sm font-medium truncate flex-1 hover:underline">
                       {p.display_name}
                     </Link>
-                    <span className="text-xs text-gray-500">{p.kills} kills</span>
-                    <span className="text-xs font-bold text-yellow-400 w-12 text-right">{p.rating}</span>
+                    <span className="text-xs font-bold text-yellow-400 w-16 text-right">{p.rating} pts</span>
                   </li>
                 ))}
               </ul>

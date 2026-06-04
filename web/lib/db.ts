@@ -88,11 +88,18 @@ export async function initSchema() {
       npc_kills         INTEGER NOT NULL DEFAULT 0,
       heli_hits         INTEGER NOT NULL DEFAULT 0,
       bradley_hits      INTEGER NOT NULL DEFAULT 0,
+      scientist_kills   INTEGER NOT NULL DEFAULT 0,
+      animal_kills      INTEGER NOT NULL DEFAULT 0,
+      heli_kills        INTEGER NOT NULL DEFAULT 0,
+      bradley_kills     INTEGER NOT NULL DEFAULT 0,
       playtime          INTEGER NOT NULL DEFAULT 0,
       rating            INTEGER NOT NULL DEFAULT 0,
       UNIQUE(steam_id, wipe_id)
     )
   `);
+  for (const c of ["scientist_kills", "animal_kills", "heli_kills", "bradley_kills"]) {
+    await exec(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS ${c} INTEGER NOT NULL DEFAULT 0`);
+  }
   await exec(`
     CREATE TABLE IF NOT EXISTS kill_log (
       id        SERIAL PRIMARY KEY,
@@ -255,6 +262,7 @@ export async function applyStatDelta(
     wood?: number; stone?: number; metalOre?: number; sulfurOre?: number;
     structuresPlaced?: number; rocketsFired?: number; c4Thrown?: number;
     npcKills?: number; heliHits?: number; bradleyHits?: number; playtime?: number;
+    scientistKills?: number; animalKills?: number; heliKills?: number; bradleyKills?: number;
   }
 ) {
   const n = (v?: number) => v ?? 0;
@@ -273,24 +281,31 @@ export async function applyStatDelta(
        npc_kills         = npc_kills         + $11,
        heli_hits         = heli_hits         + $12,
        bradley_hits      = bradley_hits      + $13,
-       playtime          = playtime          + $14
-     WHERE steam_id = $15 AND wipe_id = $16`,
+       playtime          = playtime          + $14,
+       scientist_kills   = scientist_kills   + $15,
+       animal_kills      = animal_kills      + $16,
+       heli_kills        = heli_kills        + $17,
+       bradley_kills     = bradley_kills     + $18
+     WHERE steam_id = $19 AND wipe_id = $20`,
     [
       n(d.kills), n(d.deaths), n(d.headshots),
       n(d.wood), n(d.stone), n(d.metalOre), n(d.sulfurOre),
       n(d.structuresPlaced), n(d.rocketsFired), n(d.c4Thrown),
       n(d.npcKills), n(d.heliHits), n(d.bradleyHits), n(d.playtime),
+      n(d.scientistKills), n(d.animalKills), n(d.heliKills), n(d.bradleyKills),
       steamId, wipeId,
     ]
   );
+  // PvE-weighted rating: boss kills dominate, then NPC/scientist/hunting,
+  // gathering, building, playtime. Minimal PvP weight.
   await exec(
     `UPDATE player_stats SET rating = GREATEST(0, (
-       kills * 10 + headshots * 5 + npc_kills * 3 +
-       heli_hits * 2 + bradley_hits * 2 +
+       heli_kills * 50 + bradley_kills * 50 +
+       scientist_kills * 3 + npc_kills * 2 + animal_kills * 1 +
        (wood + stone + metal_ore + sulfur_ore) / 1000 +
        structures_placed / 2 +
-       rockets_fired * 4 + c4_thrown * 6 +
-       playtime / 100 - deaths * 2
+       playtime / 60 +
+       kills * 2
      )) WHERE steam_id = $1 AND wipe_id = $2`,
     [steamId, wipeId]
   );
@@ -299,33 +314,36 @@ export async function applyStatDelta(
 // ── Server totals (current wipe) ──────────────────────────────────────────────
 export interface ServerTotals {
   players: number;
-  kills: number;
+  npcKills: number;
+  animalKills: number;
+  bossKills: number;
   gathered: number;
   structures: number;
   playtime: number;
-  explosives: number;
 }
 
 export async function getServerTotals(wipeId: number): Promise<ServerTotals> {
   const rows = await query<Record<string, unknown>>(
     `SELECT
-       COUNT(DISTINCT steam_id)                              AS players,
-       COALESCE(SUM(kills), 0)                               AS kills,
+       COUNT(DISTINCT steam_id)                               AS players,
+       COALESCE(SUM(scientist_kills + npc_kills), 0)          AS npc_kills,
+       COALESCE(SUM(animal_kills), 0)                         AS animal_kills,
+       COALESCE(SUM(heli_kills + bradley_kills), 0)           AS boss_kills,
        COALESCE(SUM(wood + stone + metal_ore + sulfur_ore),0) AS gathered,
-       COALESCE(SUM(structures_placed), 0)                  AS structures,
-       COALESCE(SUM(playtime), 0)                           AS playtime,
-       COALESCE(SUM(rockets_fired + c4_thrown), 0)          AS explosives
+       COALESCE(SUM(structures_placed), 0)                   AS structures,
+       COALESCE(SUM(playtime), 0)                            AS playtime
      FROM player_stats WHERE wipe_id = $1`,
     [wipeId]
   );
   const r = rows[0] ?? {};
   return {
     players: Number(r.players ?? 0),
-    kills: Number(r.kills ?? 0),
+    npcKills: Number(r.npc_kills ?? 0),
+    animalKills: Number(r.animal_kills ?? 0),
+    bossKills: Number(r.boss_kills ?? 0),
     gathered: Number(r.gathered ?? 0),
     structures: Number(r.structures ?? 0),
     playtime: Number(r.playtime ?? 0),
-    explosives: Number(r.explosives ?? 0),
   };
 }
 
@@ -394,7 +412,8 @@ export async function queryWeaponBreakdown(
 const STAT_COLS = [
   "kills", "deaths", "headshots", "wood", "stone", "metal_ore", "sulfur_ore",
   "structures_placed", "rockets_fired", "c4_thrown", "npc_kills",
-  "heli_hits", "bradley_hits", "playtime", "rating",
+  "heli_hits", "bradley_hits", "scientist_kills", "animal_kills",
+  "heli_kills", "bradley_kills", "playtime", "rating",
 ] as const;
 
 export type StatTotals = Record<(typeof STAT_COLS)[number], number>;
@@ -565,12 +584,12 @@ export async function recordKills(
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 const ORDER_BY: Record<string, string> = {
-  overall:    "SUM(s.rating) DESC",
-  pvp:        "SUM(s.kills) DESC, SUM(s.headshots) DESC",
-  gathering:  "SUM(s.wood + s.stone + s.metal_ore + s.sulfur_ore) DESC",
-  explosives: "SUM(s.rockets_fired + s.c4_thrown) DESC",
-  building:   "SUM(s.structures_placed) DESC",
-  npc:        "SUM(s.npc_kills + s.heli_hits + s.bradley_hits) DESC",
+  overall:   "SUM(s.rating) DESC",
+  npc:       "SUM(s.scientist_kills + s.npc_kills) DESC",
+  hunting:   "SUM(s.animal_kills) DESC",
+  events:    "SUM(s.heli_kills + s.bradley_kills) DESC",
+  gathering: "SUM(s.wood + s.stone + s.metal_ore + s.sulfur_ore) DESC",
+  building:  "SUM(s.structures_placed) DESC",
 };
 
 export async function queryLeaderboard(opts: {
@@ -615,6 +634,10 @@ export async function queryLeaderboard(opts: {
        SUM(s.npc_kills)         AS npc_kills,
        SUM(s.heli_hits)         AS heli_hits,
        SUM(s.bradley_hits)      AS bradley_hits,
+       SUM(s.scientist_kills)   AS scientist_kills,
+       SUM(s.animal_kills)      AS animal_kills,
+       SUM(s.heli_kills)        AS heli_kills,
+       SUM(s.bradley_kills)     AS bradley_kills,
        SUM(s.playtime)          AS playtime,
        SUM(s.rating)            AS rating
      FROM player_stats s

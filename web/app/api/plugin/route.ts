@@ -36,6 +36,13 @@ export async function POST(req: NextRequest) {
 
   // ── Server info ────────────────────────────────────────────────────────────
   if (body.server) {
+    // Monuments are sent only occasionally (perf) — preserve the last set when
+    // this update omits them, so the map keeps its labels.
+    const incoming = body.server as { monuments?: unknown[] };
+    if (!incoming.monuments || incoming.monuments.length === 0) {
+      const cur = await getGameState();
+      incoming.monuments = cur.server?.monuments ?? [];
+    }
     await updateGameState({ server: body.server });
 
     const s = body.server as {

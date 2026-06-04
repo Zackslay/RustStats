@@ -84,6 +84,7 @@ namespace Oxide.Plugins
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
         private int _mapUploadAttempt = 0;
+        private int _liveTick = 0;
 
         // Event entities (heli/bradley/cargo/chinook) tracked via spawn hooks so
         // SendLiveUpdate never has to scan BaseNetworkable.serverEntities (100k+
@@ -350,6 +351,12 @@ namespace Oxide.Plugins
         {
             var payload = new Dictionary<string, object>();
 
+            // Monuments are static — only send them occasionally (~every 30s) to
+            // avoid serializing the whole list on the main thread every 2s. The
+            // dashboard preserves the last set when this is null.
+            _liveTick++;
+            object monuments = (_liveTick % 15 == 1) ? (object)GetMonuments() : null;
+
             // Server info
             payload["server"] = new
             {
@@ -368,7 +375,7 @@ namespace Oxide.Plugins
                 // Identifies the current map save; when it changes the dashboard
                 // starts a new wipe (resets "Current Wipe" leaderboard).
                 wipeSig = $"{World.Seed}_{(int)World.Size}_{((DateTimeOffset)SaveRestore.SaveCreatedTime).ToUnixTimeSeconds()}",
-                monuments = GetMonuments()
+                monuments = monuments
             };
 
             // Player positions

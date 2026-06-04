@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import type { GameState, ActiveEvent } from "@/lib/gameState";
+import KillFeed from "@/components/KillFeed";
 
 const LiveMap = dynamic(() => import("@/components/LiveMap"), { ssr: false });
 
@@ -162,7 +164,12 @@ export default function MapPage() {
                         : "#4ade80",
                     }}
                   />
-                  <span className="truncate flex-1">{p.name}</span>
+                  <Link
+                    href={`/player/${p.steamId}`}
+                    className="truncate flex-1 hover:text-red-400 transition-colors"
+                  >
+                    {p.name}
+                  </Link>
                   <span className="text-gray-500">{p.health}hp</span>
                 </div>
               ))}
@@ -170,6 +177,14 @@ export default function MapPage() {
                 <p className="text-gray-600 text-xs">No players online</p>
               )}
             </div>
+          </div>
+
+          {/* Recent kills */}
+          <div className="p-3 border-t border-[#2a2a2a] max-h-64 overflow-y-auto shrink-0">
+            <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
+              Recent Kills
+            </p>
+            <KillFeed limit={12} scope="current" />
           </div>
         </aside>
 

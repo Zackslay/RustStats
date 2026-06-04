@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 interface PlayerRow {
   rank: number;
@@ -264,7 +265,9 @@ export default function LeaderboardPage() {
                           {p.display_name[0]?.toUpperCase()}
                         </div>
                       )}
-                      <span className="font-medium">{p.display_name}</span>
+                      <Link href={`/player/${p.steam_id}`} className="font-medium hover:underline hover:text-red-400 transition-colors">
+                        {p.display_name}
+                      </Link>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right text-gray-400 text-xs">

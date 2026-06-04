@@ -247,6 +247,113 @@ export async function applyStatDelta(
   );
 }
 
+// ── Player profile ────────────────────────────────────────────────────────────
+const STAT_COLS = [
+  "kills", "deaths", "headshots", "wood", "stone", "metal_ore", "sulfur_ore",
+  "structures_placed", "rockets_fired", "c4_thrown", "npc_kills",
+  "heli_hits", "bradley_hits", "playtime", "rating",
+] as const;
+
+export type StatTotals = Record<(typeof STAT_COLS)[number], number>;
+
+export interface PlayerProfile {
+  player: {
+    steam_id: string;
+    display_name: string;
+    avatar_url: string;
+    first_seen: number;
+    last_seen: number;
+  } | null;
+  current: StatTotals;
+  lifetime: StatTotals;
+}
+
+function emptyTotals(): StatTotals {
+  return Object.fromEntries(STAT_COLS.map((c) => [c, 0])) as StatTotals;
+}
+
+function coerceTotals(row: Record<string, unknown> | undefined): StatTotals {
+  const out = emptyTotals();
+  if (!row) return out;
+  for (const c of STAT_COLS) out[c] = Number(row[c] ?? 0);
+  return out;
+}
+
+export async function getPlayerProfile(steamId: string): Promise<PlayerProfile> {
+  const wipeId = await getCurrentWipeId();
+  const sumExpr = STAT_COLS.map((c) => `COALESCE(SUM(${c}),0) AS ${c}`).join(", ");
+
+  const [players, current, lifetime] = await Promise.all([
+    query<PlayerProfile["player"]>(
+      `SELECT steam_id, display_name, avatar_url, first_seen, last_seen
+       FROM players WHERE steam_id = $1`,
+      [steamId]
+    ),
+    query<Record<string, unknown>>(
+      `SELECT ${STAT_COLS.join(", ")} FROM player_stats WHERE steam_id = $1 AND wipe_id = $2`,
+      [steamId, wipeId]
+    ),
+    query<Record<string, unknown>>(
+      `SELECT ${sumExpr} FROM player_stats WHERE steam_id = $1`,
+      [steamId]
+    ),
+  ]);
+
+  return {
+    player: players[0] ?? null,
+    current: coerceTotals(current[0]),
+    lifetime: coerceTotals(lifetime[0]),
+  };
+}
+
+// ── Kill feed ───────────────────────────────────────────────────────────────
+export interface KillRow {
+  id: number;
+  weapon: string;
+  headshot: boolean;
+  ts: number;
+  killer_id: string | null;
+  killer_name: string | null;
+  killer_avatar: string | null;
+  victim_id: string | null;
+  victim_name: string | null;
+  victim_avatar: string | null;
+}
+
+export async function queryRecentKills(opts: {
+  wipeId?: number; // omit for lifetime
+  steamId?: string; // filter to kills involving this player
+  limit: number;
+}): Promise<KillRow[]> {
+  const params: unknown[] = [];
+  let i = 1;
+  const where: string[] = [];
+  if (opts.wipeId !== undefined) {
+    where.push(`k.wipe_id = $${i++}`);
+    params.push(opts.wipeId);
+  }
+  if (opts.steamId) {
+    where.push(`(k.killer_id = $${i} OR k.victim_id = $${i})`);
+    params.push(opts.steamId);
+    i++;
+  }
+  params.push(opts.limit);
+  const limitParam = `$${i}`;
+
+  return query<KillRow>(
+    `SELECT k.id, k.weapon, k.headshot, k.ts,
+            k.killer_id, ka.display_name AS killer_name, ka.avatar_url AS killer_avatar,
+            k.victim_id, va.display_name AS victim_name, va.avatar_url AS victim_avatar
+     FROM kill_log k
+     LEFT JOIN players ka ON ka.steam_id = k.killer_id
+     LEFT JOIN players va ON va.steam_id = k.victim_id
+     ${where.length ? "WHERE " + where.join(" AND ") : ""}
+     ORDER BY k.ts DESC, k.id DESC
+     LIMIT ${limitParam}`,
+    params
+  );
+}
+
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 const ORDER_BY: Record<string, string> = {
   overall:    "SUM(s.rating) DESC",

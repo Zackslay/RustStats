@@ -44,6 +44,17 @@ async function exec(text: string, values?: unknown[]): Promise<void> {
   await pool.query(text, values);
 }
 
+// Self-healing migration for the PvE stat columns so reads/writes work even if
+// /api/setup hasn't been re-run after a deploy. Runs once per process.
+let statColsEnsured = false;
+export async function ensureStatColumns(): Promise<void> {
+  if (statColsEnsured) return;
+  for (const c of ["scientist_kills", "animal_kills", "heli_kills", "bradley_kills"]) {
+    await exec(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS ${c} INTEGER NOT NULL DEFAULT 0`);
+  }
+  statColsEnsured = true;
+}
+
 // ── Schema ────────────────────────────────────────────────────────────────────
 export async function initSchema() {
   await exec(`
@@ -265,6 +276,7 @@ export async function applyStatDelta(
     scientistKills?: number; animalKills?: number; heliKills?: number; bradleyKills?: number;
   }
 ) {
+  await ensureStatColumns();
   const n = (v?: number) => v ?? 0;
   await exec(
     `UPDATE player_stats SET
@@ -323,6 +335,7 @@ export interface ServerTotals {
 }
 
 export async function getServerTotals(wipeId: number): Promise<ServerTotals> {
+  await ensureStatColumns();
   const rows = await query<Record<string, unknown>>(
     `SELECT
        COUNT(DISTINCT steam_id)                               AS players,
@@ -444,6 +457,7 @@ function coerceTotals(row: Record<string, unknown> | undefined): StatTotals {
 }
 
 export async function getPlayerProfile(steamId: string): Promise<PlayerProfile> {
+  await ensureStatColumns();
   const wipeId = await getCurrentWipeId();
   const sumExpr = STAT_COLS.map((c) => `COALESCE(SUM(${c}),0) AS ${c}`).join(", ");
 
@@ -599,6 +613,7 @@ export async function queryLeaderboard(opts: {
   search: string;
   limit: number;
 }) {
+  await ensureStatColumns();
   const orderBy = ORDER_BY[opts.category] ?? ORDER_BY.overall;
   const params: unknown[] = [];
   let paramIdx = 1;

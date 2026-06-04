@@ -30,31 +30,62 @@ export default function MapPage() {
   const [deaths, setDeaths] = useState<DeathMarker[]>([]);
   const [showDeaths, setShowDeaths] = useState(true);
 
+  const mapSize = (state.wipe?.map_size as number) ?? state.server?.mapSize ?? 3500;
+
   // ── Map calibration (aligns markers to the rendered map image) ────────────
-  // Defaults calibrated against world.rendermap output (it bakes in a ~9.2%
-  // ocean-margin border, so the playable world is inset on each edge).
+  // world.rendermap bakes in a fixed ~500-unit ocean border, so the inset
+  // fraction is size-dependent: margin = 500 / (size + 1000) (fits 3750→0.105,
+  // 4500→0.091). Per-size tweaks are remembered; the slider fine-tunes any map.
   const [showCal, setShowCal] = useState(false);
-  const [margin, setMargin] = useState(0.092);
+  const [margin, setMargin] = useState(() => defaultMargin(3500));
   const [offX, setOffX] = useState(0);
   const [offZ, setOffZ] = useState(10);
+  const [calibTouched, setCalibTouched] = useState(false);
 
+  // Load saved calibration for this map size (or the size-aware default) when
+  // the map size changes, unless the user has manually tuned this session.
   useEffect(() => {
+    if (calibTouched) return;
     try {
-      const raw = localStorage.getItem("mapCalib");
+      const raw = localStorage.getItem(`mapCalib:${mapSize}`);
       if (raw) {
         const c = JSON.parse(raw);
-        setMargin(c.margin ?? 0);
+        setMargin(c.margin ?? defaultMargin(mapSize));
         setOffX(c.offX ?? 0);
-        setOffZ(c.offZ ?? 0);
+        setOffZ(c.offZ ?? 10);
+        return;
       }
     } catch {}
-  }, []);
+    setMargin(defaultMargin(mapSize));
+    setOffX(0);
+    setOffZ(10);
+  }, [mapSize, calibTouched]);
 
-  useEffect(() => {
+  const tuneCalib = useCallback(
+    (next: { margin?: number; offX?: number; offZ?: number }) => {
+      setCalibTouched(true);
+      const m = next.margin ?? margin;
+      const x = next.offX ?? offX;
+      const z = next.offZ ?? offZ;
+      if (next.margin !== undefined) setMargin(next.margin);
+      if (next.offX !== undefined) setOffX(next.offX);
+      if (next.offZ !== undefined) setOffZ(next.offZ);
+      try {
+        localStorage.setItem(`mapCalib:${mapSize}`, JSON.stringify({ margin: m, offX: x, offZ: z }));
+      } catch {}
+    },
+    [margin, offX, offZ, mapSize]
+  );
+
+  const resetCalib = useCallback(() => {
+    setCalibTouched(false);
+    setMargin(defaultMargin(mapSize));
+    setOffX(0);
+    setOffZ(10);
     try {
-      localStorage.setItem("mapCalib", JSON.stringify({ margin, offX, offZ }));
+      localStorage.removeItem(`mapCalib:${mapSize}`);
     } catch {}
-  }, [margin, offX, offZ]);
+  }, [mapSize]);
 
   const fetchState = useCallback(async () => {
     try {
@@ -91,7 +122,6 @@ export default function MapPage() {
     return () => clearInterval(id);
   }, [fetchDeaths]);
 
-  const mapSize = (state.wipe?.map_size as number) ?? state.server?.mapSize ?? 3500;
   // The plugin renders the map (world.rendermap) and uploads it to /api/map.
   // Empty mapUrl => use our self-hosted render. A non-localhost override is used
   // directly; legacy localhost values still fall back to the proxy.
@@ -253,15 +283,15 @@ export default function MapPage() {
                 Drag until monument labels sit on the monuments, then send these
                 3 numbers.
               </p>
-              <CalSlider label="Margin" value={margin} min={-0.1} max={0.25} step={0.002} onChange={setMargin} format={(v) => v.toFixed(3)} />
-              <CalSlider label="Offset X" value={offX} min={-600} max={600} step={5} onChange={setOffX} format={(v) => v.toFixed(0)} />
-              <CalSlider label="Offset Z" value={offZ} min={-600} max={600} step={5} onChange={setOffZ} format={(v) => v.toFixed(0)} />
+              <CalSlider label="Margin" value={margin} min={-0.1} max={0.25} step={0.002} onChange={(v) => tuneCalib({ margin: v })} format={(v) => v.toFixed(3)} />
+              <CalSlider label="Offset X" value={offX} min={-600} max={600} step={5} onChange={(v) => tuneCalib({ offX: v })} format={(v) => v.toFixed(0)} />
+              <CalSlider label="Offset Z" value={offZ} min={-600} max={600} step={5} onChange={(v) => tuneCalib({ offZ: v })} format={(v) => v.toFixed(0)} />
               <div className="flex items-center justify-between pt-1">
                 <code className="text-[10px] text-emerald-400">
                   {`m=${margin.toFixed(3)} x=${offX} z=${offZ}`}
                 </code>
                 <button
-                  onClick={() => { setMargin(0); setOffX(0); setOffZ(0); }}
+                  onClick={resetCalib}
                   className="text-[10px] text-gray-400 hover:text-white underline"
                 >
                   reset
@@ -273,6 +303,12 @@ export default function MapPage() {
       </div>
     </div>
   );
+}
+
+// world.rendermap bakes in a fixed ~500-unit ocean border around the playable
+// area, so the inset fraction shrinks as the map grows.
+function defaultMargin(mapSize: number): number {
+  return 500 / (mapSize + 1000);
 }
 
 function CalSlider({

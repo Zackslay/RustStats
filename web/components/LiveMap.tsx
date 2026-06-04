@@ -184,9 +184,11 @@ export default function LiveMap({ mapSize, mapImageUrl, state, margin = 0, offX 
     }
 
     const group = L!.layerGroup();
-    const cell = 146.86; // Rust grid cell size (meters)
+    // Rust's exact grid math (from GridAPI): cell COUNT = floor(size / (1024/7)),
+    // and cells are sized size/count so they tile the playable area exactly.
     const half = mapSize / 2;
-    const n = Math.floor(mapSize / cell); // cells per axis
+    const n = Math.max(1, Math.floor(mapSize / (1024 / 7))); // cells per axis
+    const cell = mapSize / n; // even tiling, matches in-game
     const lineStyle = { color: "#ffffff", weight: 1, opacity: 0.12, interactive: false };
 
     for (let i = 0; i <= n; i++) {

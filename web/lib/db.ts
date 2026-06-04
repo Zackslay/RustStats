@@ -99,9 +99,13 @@ export async function initSchema() {
       victim_id TEXT REFERENCES players(steam_id),
       weapon    TEXT NOT NULL DEFAULT '',
       headshot  BOOLEAN NOT NULL DEFAULT FALSE,
+      x         REAL,
+      z         REAL,
       ts        BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
     )
   `);
+  await exec(`ALTER TABLE kill_log ADD COLUMN IF NOT EXISTS x REAL`);
+  await exec(`ALTER TABLE kill_log ADD COLUMN IF NOT EXISTS z REAL`);
   await exec(`
     CREATE TABLE IF NOT EXISTS live_state (
       key        TEXT PRIMARY KEY,
@@ -312,6 +316,8 @@ export interface KillRow {
   weapon: string;
   headshot: boolean;
   ts: number;
+  x: number | null;
+  z: number | null;
   killer_id: string | null;
   killer_name: string | null;
   killer_avatar: string | null;
@@ -323,6 +329,7 @@ export interface KillRow {
 export async function queryRecentKills(opts: {
   wipeId?: number; // omit for lifetime
   steamId?: string; // filter to kills involving this player
+  sinceSeconds?: number; // only kills within the last N seconds
   limit: number;
 }): Promise<KillRow[]> {
   const params: unknown[] = [];
@@ -337,11 +344,15 @@ export async function queryRecentKills(opts: {
     params.push(opts.steamId);
     i++;
   }
+  if (opts.sinceSeconds) {
+    where.push(`k.ts >= $${i++}`);
+    params.push(Math.floor(Date.now() / 1000) - opts.sinceSeconds);
+  }
   params.push(opts.limit);
   const limitParam = `$${i}`;
 
   return query<KillRow>(
-    `SELECT k.id, k.weapon, k.headshot, k.ts,
+    `SELECT k.id, k.weapon, k.headshot, k.ts, k.x, k.z,
             k.killer_id, ka.display_name AS killer_name, ka.avatar_url AS killer_avatar,
             k.victim_id, va.display_name AS victim_name, va.avatar_url AS victim_avatar
      FROM kill_log k
@@ -352,6 +363,59 @@ export async function queryRecentKills(opts: {
      LIMIT ${limitParam}`,
     params
   );
+}
+
+// Self-healing batch insert for kills (ensures x/z columns exist once).
+let killColsEnsured = false;
+export async function recordKills(
+  wipeId: number,
+  kills: Array<{
+    killerId?: string | null;
+    victimId?: string | null;
+    weapon?: string;
+    headshot?: boolean;
+    timestamp?: number;
+    x?: number;
+    z?: number;
+  }>
+): Promise<void> {
+  if (kills.length === 0) return;
+  if (!killColsEnsured) {
+    await exec(`ALTER TABLE kill_log ADD COLUMN IF NOT EXISTS x REAL`);
+    await exec(`ALTER TABLE kill_log ADD COLUMN IF NOT EXISTS z REAL`);
+    killColsEnsured = true;
+  }
+
+  // Ensure killer/victim rows exist so the FK doesn't reject the insert.
+  const ids = new Set<string>();
+  for (const k of kills) {
+    if (k.killerId) ids.add(k.killerId);
+    if (k.victimId) ids.add(k.victimId);
+  }
+  for (const id of ids) {
+    await exec(
+      `INSERT INTO players (steam_id, display_name) VALUES ($1, $1)
+       ON CONFLICT (steam_id) DO NOTHING`,
+      [id]
+    );
+  }
+
+  for (const k of kills) {
+    await exec(
+      `INSERT INTO kill_log (wipe_id, killer_id, victim_id, weapon, headshot, x, z, ts)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        wipeId,
+        k.killerId ?? null,
+        k.victimId ?? null,
+        k.weapon ?? "",
+        k.headshot ?? false,
+        k.x ?? null,
+        k.z ?? null,
+        k.timestamp ?? Math.floor(Date.now() / 1000),
+      ]
+    );
+  }
 }
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────

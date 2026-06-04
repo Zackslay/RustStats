@@ -6,6 +6,8 @@ import Link from "next/link";
 import type { GameState, ActiveEvent } from "@/lib/gameState";
 import KillFeed from "@/components/KillFeed";
 
+import type { DeathMarker } from "@/components/LiveMap";
+
 const LiveMap = dynamic(() => import("@/components/LiveMap"), { ssr: false });
 
 const POLL_INTERVAL = 2500; // ms
@@ -25,6 +27,8 @@ export default function MapPage() {
     lastUpdate: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [deaths, setDeaths] = useState<DeathMarker[]>([]);
+  const [showDeaths, setShowDeaths] = useState(true);
 
   // ── Map calibration (aligns markers to the rendered map image) ────────────
   // Defaults calibrated against world.rendermap output (it bakes in a ~9.2%
@@ -69,6 +73,23 @@ export default function MapPage() {
     const id = setInterval(fetchState, POLL_INTERVAL);
     return () => clearInterval(id);
   }, [fetchState]);
+
+  // Recent kill locations (last 15 min) for death markers.
+  const fetchDeaths = useCallback(async () => {
+    try {
+      const res = await fetch("/api/kills?since=900&limit=150");
+      if (res.ok) {
+        const data = await res.json();
+        setDeaths(data.kills ?? []);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchDeaths();
+    const id = setInterval(fetchDeaths, 10000);
+    return () => clearInterval(id);
+  }, [fetchDeaths]);
 
   const mapSize = (state.wipe?.map_size as number) ?? state.server?.mapSize ?? 3500;
   // The plugin renders the map (world.rendermap) and uploads it to /api/map.
@@ -202,15 +223,29 @@ export default function MapPage() {
             margin={margin}
             offX={offX}
             offZ={offZ}
+            deaths={showDeaths ? deaths : []}
           />
 
-          {/* Calibration toggle */}
-          <button
-            onClick={() => setShowCal((v) => !v)}
-            className="absolute top-2 right-2 z-[1000] text-[11px] px-2 py-1 rounded bg-black/70 border border-[#333] text-gray-300 hover:text-white"
-          >
-            {showCal ? "Close" : "Align ⚙"}
-          </button>
+          {/* Top-right controls */}
+          <div className="absolute top-2 right-2 z-[1000] flex gap-1">
+            <button
+              onClick={() => setShowDeaths((v) => !v)}
+              className={`text-[11px] px-2 py-1 rounded border ${
+                showDeaths
+                  ? "bg-red-600/80 border-red-500 text-white"
+                  : "bg-black/70 border-[#333] text-gray-300 hover:text-white"
+              }`}
+              title="Toggle recent death markers (last 15 min)"
+            >
+              💀 Deaths
+            </button>
+            <button
+              onClick={() => setShowCal((v) => !v)}
+              className="text-[11px] px-2 py-1 rounded bg-black/70 border border-[#333] text-gray-300 hover:text-white"
+            >
+              {showCal ? "Close" : "Align ⚙"}
+            </button>
+          </div>
 
           {showCal && (
             <div className="absolute top-10 right-2 z-[1000] w-60 bg-[#111]/95 border border-[#333] rounded-lg p-3 text-xs space-y-3">

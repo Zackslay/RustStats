@@ -14,6 +14,15 @@ interface Props {
   margin?: number; // ocean-margin fraction (world is inset by this on each edge)
   offX?: number; // world-unit X offset
   offZ?: number; // world-unit Z offset
+  deaths?: DeathMarker[]; // recent kill locations
+}
+
+export interface DeathMarker {
+  id: number;
+  x: number | null;
+  z: number | null;
+  victim_name: string | null;
+  killer_name: string | null;
 }
 
 const EVENT_ICONS: Record<string, string> = {
@@ -29,13 +38,14 @@ const EVENT_ICONS: Record<string, string> = {
 const MAP_UNITS = 1000;
 const BOUNDS: [[number, number], [number, number]] = [[0, 0], [MAP_UNITS, MAP_UNITS]];
 
-export default function LiveMap({ mapSize, mapImageUrl, state, margin = 0, offX = 0, offZ = 0 }: Props) {
+export default function LiveMap({ mapSize, mapImageUrl, state, margin = 0, offX = 0, offZ = 0, deaths = [] }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const overlayRef = useRef<import("leaflet").ImageOverlay | null>(null);
   const markersRef = useRef<Map<string, import("leaflet").Marker>>(new Map());
   const eventMarkersRef = useRef<import("leaflet").Marker[]>([]);
   const monumentMarkersRef = useRef<import("leaflet").Marker[]>([]);
+  const deathMarkersRef = useRef<import("leaflet").Marker[]>([]);
   const gridLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
 
@@ -229,6 +239,33 @@ export default function LiveMap({ mapSize, mapImageUrl, state, margin = 0, offX 
     }
     // Monuments are static; redraw only when they first arrive or calibration changes.
   }, [state.server?.monuments?.length, mapSize, leafletLoaded, margin, offX, offZ]);
+
+  // Draw recent death markers (skulls) at kill locations.
+  useEffect(() => {
+    if (!mapRef.current || !L) return;
+    const map = mapRef.current;
+
+    for (const m of deathMarkersRef.current) m.remove();
+    deathMarkersRef.current = [];
+
+    for (const d of deaths) {
+      if (d.x == null || d.z == null) continue;
+      const pos = rustToLatLng(d.x, d.z);
+      const icon = L!.divIcon({
+        className: "",
+        html: `<div class="death-marker">💀</div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+      const marker = L!.marker(pos, { icon, interactive: true, keyboard: false }).addTo(map);
+      if (d.victim_name) {
+        marker.bindPopup(
+          `<b>${escapeHtml(d.victim_name)}</b> killed${d.killer_name ? ` by <b>${escapeHtml(d.killer_name)}</b>` : ""}`
+        );
+      }
+      deathMarkersRef.current.push(marker);
+    }
+  }, [deaths, mapSize, leafletLoaded, margin, offX, offZ]);
 
   return <div ref={containerRef} className="w-full h-full rounded-lg" />;
 }

@@ -78,6 +78,7 @@ namespace Oxide.Plugins
             public string KillerId, VictimId, Weapon;
             public bool Headshot;
             public long Timestamp;
+            public float X, Z; // victim death position (for map death markers)
         }
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -433,7 +434,24 @@ namespace Oxide.Plugins
                 });
             }
             payload["statDeltas"] = deltas;
-            payload["kills"] = _pendingKills;
+
+            // Project to camelCase keys so the web route reads them correctly
+            // (Json.NET would otherwise serialize the class fields as PascalCase).
+            var kills = new List<object>();
+            foreach (var k in _pendingKills)
+            {
+                kills.Add(new
+                {
+                    killerId = k.KillerId,
+                    victimId = k.VictimId,
+                    weapon = k.Weapon,
+                    headshot = k.Headshot,
+                    timestamp = k.Timestamp,
+                    x = k.X,
+                    z = k.Z
+                });
+            }
+            payload["kills"] = kills;
 
             _pendingDeltas.Clear();
             _pendingKills.Clear();
@@ -468,13 +486,16 @@ namespace Oxide.Plugins
                 GetOrAdd(victim).Deaths++;
                 if (info.isHeadshot) GetOrAdd(killer).Headshots++;
 
+                var deathPos = victim.transform.position;
                 _pendingKills.Add(new KillEntry
                 {
                     KillerId = killer.UserIDString,
                     VictimId = victim.UserIDString,
                     Weapon = info.Weapon?.ShortPrefabName ?? "",
                     Headshot = info.isHeadshot,
-                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    X = deathPos.x,
+                    Z = deathPos.z
                 });
             }
             else if (victim != null && (killer == null || killer == victim))

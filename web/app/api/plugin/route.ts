@@ -12,6 +12,7 @@ import {
   upsertPlayer,
   upsertStats,
   applyStatDelta,
+  recordKills,
 } from "@/lib/db";
 
 const PLUGIN_SECRET = process.env.PLUGIN_SECRET ?? "changeme";
@@ -98,20 +99,12 @@ export async function POST(req: NextRequest) {
 
   // ── Kill log ───────────────────────────────────────────────────────────────
   if (Array.isArray(body.kills)) {
-    await Promise.all(
-      (body.kills as Array<{
-        killerId: string; victimId: string; weapon: string;
-        headshot: boolean; timestamp?: number;
-      }>).map(async (k) => {
-        const { Pool } = await import("pg");
-        const u = new URL(process.env.POSTGRES_URL ?? ""); const pool = new Pool({ host: u.hostname, port: u.port ? parseInt(u.port) : 5432, user: decodeURIComponent(u.username), password: decodeURIComponent(u.password), database: u.pathname.replace(/^\//, ""), ssl: { rejectUnauthorized: false } });
-        await pool.query(
-          `INSERT INTO kill_log (wipe_id, killer_id, victim_id, weapon, headshot, ts)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [activeWipeId, k.killerId, k.victimId, k.weapon ?? "", k.headshot, k.timestamp ?? Math.floor(Date.now() / 1000)]
-        );
-        await pool.end();
-      })
+    await recordKills(
+      activeWipeId,
+      body.kills as Array<{
+        killerId?: string; victimId?: string; weapon?: string;
+        headshot?: boolean; timestamp?: number; x?: number; z?: number;
+      }>
     );
   }
 

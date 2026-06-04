@@ -92,6 +92,16 @@ body {
   letter-spacing: 0.02em;
 }
 
+/* ── Leaflet death marker ────────────────────────────────────────────── */
+.death-marker {
+  font-size: 12px;
+  line-height: 14px;
+  text-align: center;
+  filter: drop-shadow(0 0 2px #000);
+  opacity: 0.85;
+  cursor: pointer;
+}
+
 /* ── Leaflet grid ────────────────────────────────────────────────────── */
 .grid-label {
   font-size: 9px;

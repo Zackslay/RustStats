@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using Oxide.Core;
@@ -84,9 +83,23 @@ namespace Oxide.Plugins
         // ── Lifecycle ─────────────────────────────────────────────────────────
         private int _mapUploadAttempt = 0;
 
+        // Event entities (heli/bradley/cargo/chinook) tracked via spawn hooks so
+        // SendLiveUpdate never has to scan BaseNetworkable.serverEntities (100k+
+        // entities) — that scan, run 4x every 2s, was the main source of lag.
+        private readonly HashSet<BaseEntity> _trackedEvents = new();
+
+        private static bool IsEventEntity(BaseNetworkable e) =>
+            e is PatrolHelicopter || e is BradleyAPC || e is CargoShip || e is CH47Helicopter;
+
         private void OnServerInitialized()
         {
             LoadConfig();
+
+            // Seed the event set once (entities that existed before load won't
+            // fire OnEntitySpawned). This is the only full scan we ever do.
+            foreach (var e in BaseNetworkable.serverEntities)
+                if (e is BaseEntity be && IsEventEntity(e)) _trackedEvents.Add(be);
+
             timer.Every(_cfg.UpdateInterval, SendLiveUpdate);
             timer.Every(_cfg.StatFlushInterval, FlushStats);
             timer.Every(60f, AccumulatePlaytime);
@@ -378,27 +391,20 @@ namespace Oxide.Plugins
                 payload["players"] = players;
             }
 
-            // Active events
+            // Active events — read from the small tracked set (no entity scan).
             var events = new List<object>();
-            foreach (var heli in BaseNetworkable.serverEntities.OfType<PatrolHelicopter>())
+            _trackedEvents.RemoveWhere(e => e == null || e.IsDestroyed);
+            foreach (var e in _trackedEvents)
             {
-                var pos = heli.transform.position;
-                events.Add(new { type = "heli", x = pos.x, y = pos.y, z = pos.z, health = Mathf.RoundToInt(heli.health), label = "Patrol Heli" });
-            }
-            foreach (var brad in BaseNetworkable.serverEntities.OfType<BradleyAPC>())
-            {
-                var pos = brad.transform.position;
-                events.Add(new { type = "bradley", x = pos.x, y = pos.y, z = pos.z, health = Mathf.RoundToInt(brad.health), label = "Bradley APC" });
-            }
-            foreach (var cargo in BaseNetworkable.serverEntities.OfType<CargoShip>())
-            {
-                var pos = cargo.transform.position;
-                events.Add(new { type = "cargo", x = pos.x, y = pos.y, z = pos.z, label = "Cargo Ship" });
-            }
-            foreach (var chinook in BaseNetworkable.serverEntities.OfType<CH47Helicopter>())
-            {
-                var pos = chinook.transform.position;
-                events.Add(new { type = "chinook", x = pos.x, y = pos.y, z = pos.z, label = "Chinook" });
+                var pos = e.transform.position;
+                if (e is PatrolHelicopter heli)
+                    events.Add(new { type = "heli", x = pos.x, y = pos.y, z = pos.z, health = Mathf.RoundToInt(heli.health), label = "Patrol Heli" });
+                else if (e is BradleyAPC brad)
+                    events.Add(new { type = "bradley", x = pos.x, y = pos.y, z = pos.z, health = Mathf.RoundToInt(brad.health), label = "Bradley APC" });
+                else if (e is CargoShip)
+                    events.Add(new { type = "cargo", x = pos.x, y = pos.y, z = pos.z, label = "Cargo Ship" });
+                else if (e is CH47Helicopter)
+                    events.Add(new { type = "chinook", x = pos.x, y = pos.y, z = pos.z, label = "Chinook" });
             }
             payload["events"] = events;
 
@@ -472,6 +478,12 @@ namespace Oxide.Plugins
             }
             d.Name = player.displayName; // keep name fresh
             return d;
+        }
+
+        // ── Hooks: Event entity tracking ──────────────────────────────────────
+        private void OnEntitySpawned(BaseNetworkable entity)
+        {
+            if (entity is BaseEntity be && IsEventEntity(entity)) _trackedEvents.Add(be);
         }
 
         // ── Hooks: PvP ────────────────────────────────────────────────────────

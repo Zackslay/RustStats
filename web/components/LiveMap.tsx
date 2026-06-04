@@ -15,6 +15,8 @@ interface Props {
   offX?: number; // world-unit X offset
   offZ?: number; // world-unit Z offset
   deaths?: DeathMarker[]; // recent kill locations
+  calibrating?: boolean; // capture map clicks for pin-align
+  onCalibrate?: (latNorm: number, lngNorm: number) => void; // normalized 0..1 click
 }
 
 export interface DeathMarker {
@@ -38,7 +40,7 @@ const EVENT_ICONS: Record<string, string> = {
 const MAP_UNITS = 1000;
 const BOUNDS: [[number, number], [number, number]] = [[0, 0], [MAP_UNITS, MAP_UNITS]];
 
-export default function LiveMap({ mapSize, mapImageUrl, state, margin = 0, offX = 0, offZ = 0, deaths = [] }: Props) {
+export default function LiveMap({ mapSize, mapImageUrl, state, margin = 0, offX = 0, offZ = 0, deaths = [], calibrating = false, onCalibrate }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const overlayRef = useRef<import("leaflet").ImageOverlay | null>(null);
@@ -85,6 +87,21 @@ export default function LiveMap({ mapSize, mapImageUrl, state, margin = 0, offX 
     map.fitBounds(BOUNDS);
     mapRef.current = map;
   }, [leafletLoaded]);
+
+  // Pin-align: while calibrating, report clicks as normalized 0..1 coords.
+  useEffect(() => {
+    if (!mapRef.current || !L || !calibrating) return;
+    const map = mapRef.current;
+    const handler = (e: { latlng: { lat: number; lng: number } }) =>
+      onCalibrate?.(e.latlng.lat / MAP_UNITS, e.latlng.lng / MAP_UNITS);
+    map.on("click", handler);
+    const el = map.getContainer();
+    el.style.cursor = "crosshair";
+    return () => {
+      map.off("click", handler);
+      el.style.cursor = "";
+    };
+  }, [calibrating, leafletLoaded, onCalibrate]);
 
   // Update image overlay whenever mapImageUrl changes (including after first fetch)
   useEffect(() => {

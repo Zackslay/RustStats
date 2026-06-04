@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import type { GameState, ActiveEvent } from "@/lib/gameState";
+import type { GameState, ActiveEvent, Monument } from "@/lib/gameState";
 import KillFeed from "@/components/KillFeed";
 
 import type { DeathMarker } from "@/components/LiveMap";
@@ -86,6 +86,66 @@ export default function MapPage() {
       localStorage.removeItem(`mapCalib:${mapSize}`);
     } catch {}
   }, [mapSize]);
+
+  // ── Pin-align (exact, ground-control-point calibration) ───────────────────
+  // Pin two monuments to their real spots on the rendered map and solve the
+  // exact margin/offX/offZ. rendermap is a square render of a square world, so
+  // scale is uniform — two points fully determine scale + offset.
+  type Pin = { lat: number; lng: number };
+  const [pinPhase, setPinPhase] = useState<"off" | "pickA" | "clickA" | "pickB" | "clickB">("off");
+  const [pinMonA, setPinMonA] = useState<Monument | null>(null);
+  const [pinMonB, setPinMonB] = useState<Monument | null>(null);
+  const [pinA, setPinA] = useState<Pin | null>(null);
+  const [pinError, setPinError] = useState("");
+  const calibrating = pinPhase === "clickA" || pinPhase === "clickB";
+
+  const cancelPin = useCallback(() => {
+    setPinPhase("off");
+    setPinMonA(null);
+    setPinMonB(null);
+    setPinA(null);
+  }, []);
+
+  const onCalibrate = useCallback(
+    (lat: number, lng: number) => {
+      if (pinPhase === "clickA") {
+        setPinA({ lat, lng });
+        setPinPhase("pickB");
+      } else if (pinPhase === "clickB" && pinMonA && pinMonB && pinA) {
+        const a = pinMonA, b = pinMonB, p1 = pinA, p2 = { lat, lng };
+        const dx = b.x - a.x, dz = b.z - a.z;
+        if (Math.abs(dx) < 150 || Math.abs(dz) < 150) {
+          setPinError("Pick two monuments far apart in BOTH directions (opposite corners work best).");
+          cancelPin();
+          return;
+        }
+        const sx = (p2.lng - p1.lng) / dx;
+        const sz = (p2.lat - p1.lat) / dz;
+        const s = (sx + sz) / 2; // uniform scale (normalized units per world meter)
+        if (!(s > 0)) {
+          setPinError("Calibration failed — click the exact monument centers and try again.");
+          cancelPin();
+          return;
+        }
+        const half = mapSize / 2;
+        const m = (1 - s * mapSize) / 2;
+        const newOffX = (p1.lng - m) / s - a.x - half;
+        const newOffZ = (p1.lat - m) / s - a.z - half;
+        setCalibTouched(true);
+        setMargin(m);
+        setOffX(newOffX);
+        setOffZ(newOffZ);
+        try {
+          localStorage.setItem(`mapCalib:${mapSize}`, JSON.stringify({ margin: m, offX: newOffX, offZ: newOffZ }));
+        } catch {}
+        setPinError("");
+        cancelPin();
+      }
+    },
+    [pinPhase, pinMonA, pinMonB, pinA, mapSize, cancelPin]
+  );
+
+  const monuments = state.server?.monuments ?? [];
 
   const fetchState = useCallback(async () => {
     try {
@@ -254,6 +314,8 @@ export default function MapPage() {
             offX={offX}
             offZ={offZ}
             deaths={showDeaths ? deaths : []}
+            calibrating={calibrating}
+            onCalibrate={onCalibrate}
           />
 
           {/* Top-right controls */}
@@ -278,25 +340,86 @@ export default function MapPage() {
           </div>
 
           {showCal && (
-            <div className="absolute top-10 right-2 z-[1000] w-60 bg-[#111]/95 border border-[#333] rounded-lg p-3 text-xs space-y-3">
-              <p className="text-gray-400 leading-snug">
-                Drag until monument labels sit on the monuments, then send these
-                3 numbers.
-              </p>
-              <CalSlider label="Margin" value={margin} min={-0.1} max={0.25} step={0.002} onChange={(v) => tuneCalib({ margin: v })} format={(v) => v.toFixed(3)} />
-              <CalSlider label="Offset X" value={offX} min={-600} max={600} step={5} onChange={(v) => tuneCalib({ offX: v })} format={(v) => v.toFixed(0)} />
-              <CalSlider label="Offset Z" value={offZ} min={-600} max={600} step={5} onChange={(v) => tuneCalib({ offZ: v })} format={(v) => v.toFixed(0)} />
-              <div className="flex items-center justify-between pt-1">
-                <code className="text-[10px] text-emerald-400">
-                  {`m=${margin.toFixed(3)} x=${offX} z=${offZ}`}
-                </code>
+            <div className="absolute top-10 right-2 z-[1000] w-64 bg-[#111]/95 border border-[#333] rounded-lg p-3 text-xs space-y-3">
+              {/* Exact pin-align */}
+              <div>
+                <p className="text-gray-300 font-semibold mb-1">📍 Pin-align (exact)</p>
+                <p className="text-gray-500 leading-snug mb-2">
+                  Pin two monuments to their real spots for pixel-perfect alignment.
+                </p>
                 <button
-                  onClick={resetCalib}
-                  className="text-[10px] text-gray-400 hover:text-white underline"
+                  onClick={() => { setPinError(""); setPinPhase("pickA"); }}
+                  disabled={monuments.length < 2}
+                  className="w-full text-[11px] px-2 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white"
                 >
-                  reset
+                  {monuments.length < 2 ? "Waiting for monuments…" : "Start pin-align"}
                 </button>
+                {pinError && <p className="text-red-400 mt-1">{pinError}</p>}
               </div>
+
+              <div className="border-t border-[#2a2a2a] pt-2">
+                <p className="text-gray-500 leading-snug mb-2">Or fine-tune manually:</p>
+                <CalSlider label="Margin" value={margin} min={-0.1} max={0.25} step={0.002} onChange={(v) => tuneCalib({ margin: v })} format={(v) => v.toFixed(3)} />
+                <CalSlider label="Offset X" value={offX} min={-600} max={600} step={5} onChange={(v) => tuneCalib({ offX: v })} format={(v) => v.toFixed(0)} />
+                <CalSlider label="Offset Z" value={offZ} min={-600} max={600} step={5} onChange={(v) => tuneCalib({ offZ: v })} format={(v) => v.toFixed(0)} />
+                <div className="flex items-center justify-between pt-1">
+                  <code className="text-[10px] text-emerald-400">
+                    {`m=${margin.toFixed(3)} x=${offX.toFixed(0)} z=${offZ.toFixed(0)}`}
+                  </code>
+                  <button
+                    onClick={resetCalib}
+                    className="text-[10px] text-gray-400 hover:text-white underline"
+                  >
+                    reset
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pin-align flow overlay */}
+          {pinPhase !== "off" && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1100] w-80 bg-[#111]/97 border border-emerald-600 rounded-lg p-3 text-xs shadow-xl">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-emerald-400 font-semibold">Pin-align</span>
+                <button onClick={cancelPin} className="text-gray-400 hover:text-white">✕</button>
+              </div>
+
+              {(pinPhase === "pickA" || pinPhase === "pickB") && (
+                <>
+                  <p className="text-gray-300 mb-2">
+                    {pinPhase === "pickA"
+                      ? "Step 1/2 — choose a monument you can spot on the map:"
+                      : "Step 2/2 — choose a second monument, far from the first:"}
+                  </p>
+                  <div className="max-h-56 overflow-y-auto flex flex-col gap-0.5">
+                    {monuments
+                      .filter((mn) => pinPhase === "pickA" || mn.name !== pinMonA?.name)
+                      .map((mn, i) => (
+                        <button
+                          key={`${mn.name}-${i}`}
+                          onClick={() => {
+                            if (pinPhase === "pickA") { setPinMonA(mn); setPinPhase("clickA"); }
+                            else { setPinMonB(mn); setPinPhase("clickB"); }
+                          }}
+                          className="text-left px-2 py-1 rounded hover:bg-[#222] text-gray-300"
+                        >
+                          {mn.name}
+                        </button>
+                      ))}
+                  </div>
+                </>
+              )}
+
+              {(pinPhase === "clickA" || pinPhase === "clickB") && (
+                <p className="text-gray-300">
+                  Now click the <span className="text-emerald-400 font-semibold">exact center</span> of{" "}
+                  <span className="text-white font-semibold">
+                    {pinPhase === "clickA" ? pinMonA?.name : pinMonB?.name}
+                  </span>{" "}
+                  on the map.
+                </p>
+              )}
             </div>
           )}
         </main>

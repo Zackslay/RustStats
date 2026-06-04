@@ -113,6 +113,12 @@ export async function initSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await exec(`
+    CREATE TABLE IF NOT EXISTS population (
+      ts     BIGINT PRIMARY KEY,
+      online INTEGER NOT NULL
+    )
+  `);
   await exec(`CREATE INDEX IF NOT EXISTS idx_stats_wipe    ON player_stats(wipe_id)`);
   await exec(`CREATE INDEX IF NOT EXISTS idx_stats_rating  ON player_stats(wipe_id, rating DESC)`);
   await exec(`CREATE INDEX IF NOT EXISTS idx_kill_log_wipe ON kill_log(wipe_id)`);
@@ -251,6 +257,67 @@ export async function applyStatDelta(
   );
 }
 
+// ── Population history ────────────────────────────────────────────────────────
+let lastPopWrite = 0;
+
+export async function recordPopulationSample(online: number): Promise<void> {
+  const now = Date.now();
+  // Throttle per serverless instance — one sample every 5 minutes is plenty.
+  if (now - lastPopWrite < 5 * 60 * 1000) return;
+  lastPopWrite = now;
+  await exec(
+    `CREATE TABLE IF NOT EXISTS population (
+       ts     BIGINT PRIMARY KEY,
+       online INTEGER NOT NULL
+     )`
+  );
+  await exec(
+    `INSERT INTO population (ts, online) VALUES ($1, $2)
+     ON CONFLICT (ts) DO NOTHING`,
+    [Math.floor(now / 1000), online]
+  );
+}
+
+export async function queryPopulation(
+  sinceSeconds: number
+): Promise<{ ts: number; online: number }[]> {
+  const since = Math.floor(Date.now() / 1000) - sinceSeconds;
+  try {
+    return await query<{ ts: number; online: number }>(
+      `SELECT ts, online FROM population WHERE ts >= $1 ORDER BY ts ASC`,
+      [since]
+    );
+  } catch {
+    return []; // table may not exist yet
+  }
+}
+
+// ── Weapon breakdown (from kill_log) ──────────────────────────────────────────
+export async function queryWeaponBreakdown(
+  steamId: string,
+  wipeId?: number,
+  limit = 8
+): Promise<{ weapon: string; kills: number }[]> {
+  const params: unknown[] = [steamId];
+  let filter = "";
+  if (wipeId !== undefined) {
+    filter = `AND wipe_id = $2`;
+    params.push(wipeId);
+  }
+  params.push(limit);
+  const limitParam = `$${params.length}`;
+  const rows = await query<{ weapon: string; kills: string }>(
+    `SELECT weapon, COUNT(*) AS kills
+     FROM kill_log
+     WHERE killer_id = $1 AND weapon <> '' ${filter}
+     GROUP BY weapon
+     ORDER BY COUNT(*) DESC
+     LIMIT ${limitParam}`,
+    params
+  );
+  return rows.map((r) => ({ weapon: r.weapon, kills: Number(r.kills) }));
+}
+
 // ── Player profile ────────────────────────────────────────────────────────────
 const STAT_COLS = [
   "kills", "deaths", "headshots", "wood", "stone", "metal_ore", "sulfur_ore",
@@ -270,6 +337,8 @@ export interface PlayerProfile {
   } | null;
   current: StatTotals;
   lifetime: StatTotals;
+  weaponsCurrent: { weapon: string; kills: number }[];
+  weaponsLifetime: { weapon: string; kills: number }[];
 }
 
 function emptyTotals(): StatTotals {
@@ -287,7 +356,7 @@ export async function getPlayerProfile(steamId: string): Promise<PlayerProfile> 
   const wipeId = await getCurrentWipeId();
   const sumExpr = STAT_COLS.map((c) => `COALESCE(SUM(${c}),0) AS ${c}`).join(", ");
 
-  const [players, current, lifetime] = await Promise.all([
+  const [players, current, lifetime, weaponsCurrent, weaponsLifetime] = await Promise.all([
     query<PlayerProfile["player"]>(
       `SELECT steam_id, display_name, avatar_url, first_seen, last_seen
        FROM players WHERE steam_id = $1`,
@@ -301,12 +370,16 @@ export async function getPlayerProfile(steamId: string): Promise<PlayerProfile> 
       `SELECT ${sumExpr} FROM player_stats WHERE steam_id = $1`,
       [steamId]
     ),
+    queryWeaponBreakdown(steamId, wipeId),
+    queryWeaponBreakdown(steamId),
   ]);
 
   return {
     player: players[0] ?? null,
     current: coerceTotals(current[0]),
     lifetime: coerceTotals(lifetime[0]),
+    weaponsCurrent,
+    weaponsLifetime,
   };
 }
 

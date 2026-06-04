@@ -4,9 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import NavBar from "@/components/NavBar";
 import KillFeed from "@/components/KillFeed";
-import { formatPlaytime, relativeTime } from "@/lib/format";
+import { formatPlaytime, prettyWeapon, relativeTime } from "@/lib/format";
 
 type Totals = Record<string, number>;
+interface Weapon {
+  weapon: string;
+  kills: number;
+}
 interface Profile {
   player: {
     steam_id: string;
@@ -17,6 +21,8 @@ interface Profile {
   } | null;
   current: Totals;
   lifetime: Totals;
+  weaponsCurrent: Weapon[];
+  weaponsLifetime: Weapon[];
 }
 
 type Scope = "current" | "lifetime";
@@ -132,17 +138,51 @@ export default function PlayerPage() {
               <Stat label="Sulfur Ore" value={(t.sulfur_ore ?? 0).toLocaleString()} accent="text-yellow-500" />
             </section>
 
-            {/* Kill history */}
-            <section className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4">
-              <h2 className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
-                Recent Fights
-              </h2>
-              <KillFeed limit={30} scope={scope} steamId={steamId} emptyText="No fights recorded yet." />
+            {/* Weapons + kill history */}
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4">
+                <h2 className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
+                  Top Weapons
+                </h2>
+                <WeaponBars weapons={scope === "current" ? profile?.weaponsCurrent ?? [] : profile?.weaponsLifetime ?? []} />
+              </div>
+
+              <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4">
+                <h2 className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
+                  Recent Fights
+                </h2>
+                <KillFeed limit={30} scope={scope} steamId={steamId} emptyText="No fights recorded yet." />
+              </div>
             </section>
           </>
         )}
       </main>
     </div>
+  );
+}
+
+function WeaponBars({ weapons }: { weapons: Weapon[] }) {
+  if (weapons.length === 0) {
+    return <p className="text-gray-600 text-xs py-2">No weapon kills recorded yet.</p>;
+  }
+  const max = Math.max(...weapons.map((w) => w.kills));
+  return (
+    <ul className="flex flex-col gap-2">
+      {weapons.map((w) => (
+        <li key={w.weapon} className="text-xs">
+          <div className="flex justify-between mb-0.5">
+            <span className="text-gray-300">{prettyWeapon(w.weapon)}</span>
+            <span className="text-gray-500">{w.kills}</span>
+          </div>
+          <div className="h-1.5 bg-[#0f0f0f] rounded overflow-hidden">
+            <div
+              className="h-full bg-red-600"
+              style={{ width: `${Math.round((w.kills / max) * 100)}%` }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 

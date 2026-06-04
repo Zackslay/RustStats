@@ -13,6 +13,7 @@ import {
   upsertStats,
   applyStatDelta,
   recordKills,
+  recordPopulationSample,
 } from "@/lib/db";
 
 const PLUGIN_SECRET = process.env.PLUGIN_SECRET ?? "changeme";
@@ -35,7 +36,12 @@ export async function POST(req: NextRequest) {
   if (body.server) {
     await updateGameState({ server: body.server });
 
-    const s = body.server as { mapSeed?: number; mapSize?: number; mapUrl?: string };
+    const s = body.server as {
+      mapSeed?: number; mapSize?: number; mapUrl?: string; online?: number;
+    };
+    if (typeof s.online === "number") {
+      await recordPopulationSample(s.online);
+    }
     if (s.mapSeed || s.mapUrl) {
       const { Pool } = await import("pg");
       const u = new URL(process.env.POSTGRES_URL ?? ""); const pool = new Pool({ host: u.hostname, port: u.port ? parseInt(u.port) : 5432, user: decodeURIComponent(u.username), password: decodeURIComponent(u.password), database: u.pathname.replace(/^\//, ""), ssl: { rejectUnauthorized: false } });

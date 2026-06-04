@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import NavBar from "@/components/NavBar";
 import KillFeed from "@/components/KillFeed";
+import PopulationChart from "@/components/PopulationChart";
 import type { GameState } from "@/lib/gameState";
 import { relativeTime } from "@/lib/format";
 
@@ -85,6 +86,11 @@ export default function Home() {
           <NavCard href="/map" icon="🗺️" title="LIVE MAP" desc="Players, heli, bradley, cargo & monuments" />
           <NavCard href="/leaderboard" icon="🏆" title="LEADERBOARD" desc="Kills, gathering, explosives & more" />
         </section>
+
+        {/* Population history */}
+        <Panel title="Population (last 24h)">
+          <PopulationChart sinceSeconds={86400} />
+        </Panel>
 
         {/* Top players + kill feed */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">

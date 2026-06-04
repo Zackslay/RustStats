@@ -6,7 +6,7 @@ import NavBar from "@/components/NavBar";
 import KillFeed from "@/components/KillFeed";
 import PopulationChart from "@/components/PopulationChart";
 import type { GameState } from "@/lib/gameState";
-import { relativeTime } from "@/lib/format";
+import { compact, formatPlaytime, relativeTime } from "@/lib/format";
 
 interface TopRow {
   rank: number;
@@ -17,20 +17,32 @@ interface TopRow {
   rating: number;
 }
 
+interface Totals {
+  players: number;
+  kills: number;
+  gathered: number;
+  structures: number;
+  playtime: number;
+  explosives: number;
+}
+
 export default function Home() {
   const [state, setState] = useState<(GameState & { wipe?: Record<string, unknown> | null }) | null>(null);
   const [top, setTop] = useState<TopRow[]>([]);
+  const [totals, setTotals] = useState<Totals | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [gs, lb] = await Promise.all([
+      const [gs, lb, st] = await Promise.all([
         fetch("/api/gamestate").then((r) => (r.ok ? r.json() : null)),
         fetch("/api/leaderboard?category=overall&wipe=current&limit=5").then((r) =>
           r.ok ? r.json() : null
         ),
+        fetch("/api/stats").then((r) => (r.ok ? r.json() : null)),
       ]);
       if (gs) setState(gs);
       if (lb) setTop(lb.players ?? []);
+      if (st) setTotals(st);
     } catch {}
   }, []);
 
@@ -86,6 +98,18 @@ export default function Home() {
           <NavCard href="/map" icon="🗺️" title="LIVE MAP" desc="Players, heli, bradley, cargo & monuments" />
           <NavCard href="/leaderboard" icon="🏆" title="LEADERBOARD" desc="Kills, gathering, explosives & more" />
         </section>
+
+        {/* This-wipe totals */}
+        {totals && (
+          <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <Stat label="Players" value={totals.players.toLocaleString()} />
+            <Stat label="Kills" value={totals.kills.toLocaleString()} />
+            <Stat label="Gathered" value={compact(totals.gathered)} />
+            <Stat label="Structures" value={compact(totals.structures)} />
+            <Stat label="Explosives" value={totals.explosives.toLocaleString()} />
+            <Stat label="Playtime" value={formatPlaytime(totals.playtime)} />
+          </section>
+        )}
 
         {/* Population history */}
         <Panel title="Population (last 24h)">

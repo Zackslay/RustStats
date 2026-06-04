@@ -12,6 +12,13 @@ export function relativeTime(unixSeconds: number): string {
   return `${d}d ago`;
 }
 
+// Compact large numbers: 1234 -> 1.2k, 3400000 -> 3.4M
+export function compact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return `${n}`;
+}
+
 export function formatPlaytime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);

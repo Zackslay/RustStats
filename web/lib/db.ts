@@ -257,6 +257,39 @@ export async function applyStatDelta(
   );
 }
 
+// ── Server totals (current wipe) ──────────────────────────────────────────────
+export interface ServerTotals {
+  players: number;
+  kills: number;
+  gathered: number;
+  structures: number;
+  playtime: number;
+  explosives: number;
+}
+
+export async function getServerTotals(wipeId: number): Promise<ServerTotals> {
+  const rows = await query<Record<string, unknown>>(
+    `SELECT
+       COUNT(DISTINCT steam_id)                              AS players,
+       COALESCE(SUM(kills), 0)                               AS kills,
+       COALESCE(SUM(wood + stone + metal_ore + sulfur_ore),0) AS gathered,
+       COALESCE(SUM(structures_placed), 0)                  AS structures,
+       COALESCE(SUM(playtime), 0)                           AS playtime,
+       COALESCE(SUM(rockets_fired + c4_thrown), 0)          AS explosives
+     FROM player_stats WHERE wipe_id = $1`,
+    [wipeId]
+  );
+  const r = rows[0] ?? {};
+  return {
+    players: Number(r.players ?? 0),
+    kills: Number(r.kills ?? 0),
+    gathered: Number(r.gathered ?? 0),
+    structures: Number(r.structures ?? 0),
+    playtime: Number(r.playtime ?? 0),
+    explosives: Number(r.explosives ?? 0),
+  };
+}
+
 // ── Population history ────────────────────────────────────────────────────────
 let lastPopWrite = 0;
 

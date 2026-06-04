@@ -119,9 +119,12 @@ export async function initSchema() {
       online INTEGER NOT NULL
     )
   `);
-  await exec(`CREATE INDEX IF NOT EXISTS idx_stats_wipe    ON player_stats(wipe_id)`);
-  await exec(`CREATE INDEX IF NOT EXISTS idx_stats_rating  ON player_stats(wipe_id, rating DESC)`);
-  await exec(`CREATE INDEX IF NOT EXISTS idx_kill_log_wipe ON kill_log(wipe_id)`);
+  await exec(`CREATE INDEX IF NOT EXISTS idx_stats_wipe     ON player_stats(wipe_id)`);
+  await exec(`CREATE INDEX IF NOT EXISTS idx_stats_rating   ON player_stats(wipe_id, rating DESC)`);
+  await exec(`CREATE INDEX IF NOT EXISTS idx_kill_log_wipe  ON kill_log(wipe_id)`);
+  await exec(`CREATE INDEX IF NOT EXISTS idx_kill_log_ts    ON kill_log(ts DESC)`);
+  await exec(`CREATE INDEX IF NOT EXISTS idx_kill_log_killer ON kill_log(killer_id)`);
+  await exec(`CREATE INDEX IF NOT EXISTS idx_kill_log_victim ON kill_log(victim_id)`);
 
   const rows = await query(`SELECT id FROM wipes WHERE is_current = TRUE LIMIT 1`);
   if (rows.length === 0) {

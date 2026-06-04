@@ -350,6 +350,9 @@ namespace Oxide.Plugins
                 mapUrl = _cfg.MapImageUrl ?? "",
                 wipeDate = ((DateTimeOffset)SaveRestore.SaveCreatedTime).ToUnixTimeSeconds(),
                 updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                // Identifies the current map save; when it changes the dashboard
+                // starts a new wipe (resets "Current Wipe" leaderboard).
+                wipeSig = $"{World.Seed}_{(int)World.Size}_{((DateTimeOffset)SaveRestore.SaveCreatedTime).ToUnixTimeSeconds()}",
                 monuments = GetMonuments()
             };
 

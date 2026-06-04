@@ -63,11 +63,13 @@ export async function initSchema() {
       map_size   INTEGER,
       map_url    TEXT NOT NULL DEFAULT '',
       map_image  TEXT NOT NULL DEFAULT '',
+      wipe_sig   TEXT,
       is_current BOOLEAN NOT NULL DEFAULT TRUE
     )
   `);
-  // Add column to existing tables that were created before this field existed
+  // Add columns to existing tables that were created before these fields existed
   await exec(`ALTER TABLE wipes ADD COLUMN IF NOT EXISTS map_image TEXT NOT NULL DEFAULT ''`);
+  await exec(`ALTER TABLE wipes ADD COLUMN IF NOT EXISTS wipe_sig TEXT`);
   await exec(`
     CREATE TABLE IF NOT EXISTS player_stats (
       id                SERIAL PRIMARY KEY,
@@ -152,6 +154,40 @@ export async function startNewWipe(): Promise<number> {
     `INSERT INTO wipes (is_current) VALUES (TRUE) RETURNING id`
   );
   return rows[0].id;
+}
+
+// Idempotent wipe resolution by signature (seed_size_savetime). Starts a new
+// wipe only when the signature changes, so retries/duplicate posts are safe.
+let wipeSigColEnsured = false;
+export async function resolveWipe(sig: string | undefined | null): Promise<number> {
+  if (!sig) return getCurrentWipeId();
+
+  if (!wipeSigColEnsured) {
+    await exec(`ALTER TABLE wipes ADD COLUMN IF NOT EXISTS wipe_sig TEXT`);
+    wipeSigColEnsured = true;
+  }
+
+  const cur = await query<{ id: number; wipe_sig: string | null }>(
+    `SELECT id, wipe_sig FROM wipes WHERE is_current = TRUE LIMIT 1`
+  );
+
+  if (cur.length === 0) {
+    const created = await query<{ id: number }>(
+      `INSERT INTO wipes (is_current, wipe_sig) VALUES (TRUE, $1) RETURNING id`,
+      [sig]
+    );
+    return created[0].id;
+  }
+
+  if (cur[0].wipe_sig === sig) return cur[0].id;
+
+  // Signature changed → new wipe.
+  await exec(`UPDATE wipes SET is_current = FALSE`);
+  const created = await query<{ id: number }>(
+    `INSERT INTO wipes (is_current, wipe_sig) VALUES (TRUE, $1) RETURNING id`,
+    [sig]
+  );
+  return created[0].id;
 }
 
 // ── Map image ───────────────────────────────────────────────────────────────

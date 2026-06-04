@@ -9,6 +9,7 @@ import {
 import {
   getCurrentWipeId,
   startNewWipe,
+  resolveWipe,
   upsertPlayer,
   upsertStats,
   applyStatDelta,
@@ -24,10 +25,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const wipeId = await getCurrentWipeId();
 
-  // ── New wipe signal (do first so wipeId is fresh for everything else) ─────
-  let activeWipeId = wipeId;
+  // ── Wipe resolution (do first so the right wipe id is used everywhere) ─────
+  // Idempotent: starts a new wipe only when the map signature changes.
+  const wipeSig = (body?.server as { wipeSig?: string } | undefined)?.wipeSig;
+  let activeWipeId = wipeSig ? await resolveWipe(wipeSig) : await getCurrentWipeId();
   if (body.newWipe) {
     activeWipeId = await startNewWipe();
   }

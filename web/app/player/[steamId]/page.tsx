@@ -115,6 +115,7 @@ export default function PlayerPage() {
             {/* Stat grid (PvE-focused) */}
             <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Stat label="Rating" value={t.rating ?? 0} accent="text-yellow-400" />
+              <Stat label="Boss Kills" value={t.boss_kills ?? 0} accent="text-red-500" />
               <Stat label="Heli Kills" value={t.heli_kills ?? 0} accent="text-red-400" />
               <Stat label="Bradley Kills" value={t.bradley_kills ?? 0} accent="text-orange-400" />
               <Stat label="Animals" value={t.animal_kills ?? 0} accent="text-green-400" />

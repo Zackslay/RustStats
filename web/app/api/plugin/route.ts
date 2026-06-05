@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
           c4Thrown: d.c4Thrown, satchels: d.satchelsThrown, npcKills: d.npcKills,
           heliHits: d.heliHits, bradleyHits: d.bradleyHits, playtime: d.playtime,
           scientistKills: d.scientistKills, animalKills: d.animalKills,
-          heliKills: d.heliKills, bradleyKills: d.bradleyKills,
+          heliKills: d.heliKills, bradleyKills: d.bradleyKills, bossKills: d.bossKills,
         });
       })
     );

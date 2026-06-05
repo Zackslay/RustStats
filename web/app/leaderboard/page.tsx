@@ -26,15 +26,17 @@ interface PlayerRow {
   animal_kills: number;
   heli_kills: number;
   bradley_kills: number;
+  boss_kills: number;
   playtime: number;
   rating: number;
 }
 
-type Category = "overall" | "npc" | "hunting" | "events" | "gathering" | "building" | "explosives";
+type Category = "overall" | "boss" | "npc" | "hunting" | "events" | "gathering" | "building" | "explosives";
 type WipeScope = "current" | "lifetime";
 
 const CATEGORIES: { id: Category; label: string; icon: string }[] = [
   { id: "overall", label: "Overall", icon: "🏆" },
+  { id: "boss", label: "Boss Slayers", icon: "💀" },
   { id: "npc", label: "Scientists & NPCs", icon: "☣️" },
   { id: "hunting", label: "Hunting", icon: "🏹" },
   { id: "events", label: "Heli / Bradley", icon: "🚁" },
@@ -182,12 +184,15 @@ export default function LeaderboardPage() {
                 <th className="px-4 py-3 text-right">Time</th>
                 {category === "overall" && (
                   <>
-                    <th className="px-4 py-3 text-right">Scientists</th>
+                    <th className="px-4 py-3 text-right">Boss</th>
                     <th className="px-4 py-3 text-right">Animals</th>
                     <th className="px-4 py-3 text-right">Heli</th>
                     <th className="px-4 py-3 text-right">Bradley</th>
                     <th className="px-4 py-3 text-right text-yellow-500">Rating</th>
                   </>
+                )}
+                {category === "boss" && (
+                  <th className="px-4 py-3 text-right">Boss Kills</th>
                 )}
                 {category === "npc" && (
                   <>
@@ -282,12 +287,15 @@ export default function LeaderboardPage() {
 
                   {category === "overall" && (
                     <>
-                      <td className="px-4 py-3 text-right text-cyan-400">{p.scientist_kills}</td>
+                      <td className="px-4 py-3 text-right text-red-500 font-medium">{p.boss_kills}</td>
                       <td className="px-4 py-3 text-right text-green-400">{p.animal_kills}</td>
                       <td className="px-4 py-3 text-right text-red-400">{p.heli_kills}</td>
                       <td className="px-4 py-3 text-right text-orange-400">{p.bradley_kills}</td>
                       <td className="px-4 py-3 text-right font-bold text-yellow-400">{p.rating}</td>
                     </>
+                  )}
+                  {category === "boss" && (
+                    <td className="px-4 py-3 text-right font-bold text-red-500">{p.boss_kills}</td>
                   )}
                   {category === "npc" && (
                     <>

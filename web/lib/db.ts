@@ -49,7 +49,7 @@ async function exec(text: string, values?: unknown[]): Promise<void> {
 let statColsEnsured = false;
 export async function ensureStatColumns(): Promise<void> {
   if (statColsEnsured) return;
-  for (const c of ["scientist_kills", "animal_kills", "heli_kills", "bradley_kills", "satchels"]) {
+  for (const c of ["scientist_kills", "animal_kills", "heli_kills", "bradley_kills", "satchels", "boss_kills"]) {
     await exec(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS ${c} INTEGER NOT NULL DEFAULT 0`);
   }
   statColsEnsured = true;
@@ -108,7 +108,7 @@ export async function initSchema() {
       UNIQUE(steam_id, wipe_id)
     )
   `);
-  for (const c of ["scientist_kills", "animal_kills", "heli_kills", "bradley_kills", "satchels"]) {
+  for (const c of ["scientist_kills", "animal_kills", "heli_kills", "bradley_kills", "satchels", "boss_kills"]) {
     await exec(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS ${c} INTEGER NOT NULL DEFAULT 0`);
   }
   await exec(`
@@ -274,6 +274,7 @@ export async function applyStatDelta(
     structuresPlaced?: number; rocketsFired?: number; c4Thrown?: number; satchels?: number;
     npcKills?: number; heliHits?: number; bradleyHits?: number; playtime?: number;
     scientistKills?: number; animalKills?: number; heliKills?: number; bradleyKills?: number;
+    bossKills?: number;
   }
 ) {
   await ensureStatColumns();
@@ -298,15 +299,16 @@ export async function applyStatDelta(
        animal_kills      = animal_kills      + $16,
        heli_kills        = heli_kills        + $17,
        bradley_kills     = bradley_kills     + $18,
-       satchels          = satchels          + $19
-     WHERE steam_id = $20 AND wipe_id = $21`,
+       satchels          = satchels          + $19,
+       boss_kills        = boss_kills        + $20
+     WHERE steam_id = $21 AND wipe_id = $22`,
     [
       n(d.kills), n(d.deaths), n(d.headshots),
       n(d.wood), n(d.stone), n(d.metalOre), n(d.sulfurOre),
       n(d.structuresPlaced), n(d.rocketsFired), n(d.c4Thrown),
       n(d.npcKills), n(d.heliHits), n(d.bradleyHits), n(d.playtime),
       n(d.scientistKills), n(d.animalKills), n(d.heliKills), n(d.bradleyKills),
-      n(d.satchels),
+      n(d.satchels), n(d.bossKills),
       steamId, wipeId,
     ]
   );
@@ -314,7 +316,7 @@ export async function applyStatDelta(
   // gathering, building, playtime. Minimal PvP weight.
   await exec(
     `UPDATE player_stats SET rating = GREATEST(0, (
-       heli_kills * 50 + bradley_kills * 50 +
+       boss_kills * 100 + heli_kills * 50 + bradley_kills * 50 +
        scientist_kills * 3 + npc_kills * 2 + animal_kills * 1 +
        (wood + stone + metal_ore + sulfur_ore) / 1000 +
        structures_placed / 2 +
@@ -429,7 +431,7 @@ const STAT_COLS = [
   "kills", "deaths", "headshots", "wood", "stone", "metal_ore", "sulfur_ore",
   "structures_placed", "rockets_fired", "c4_thrown", "satchels", "npc_kills",
   "heli_hits", "bradley_hits", "scientist_kills", "animal_kills",
-  "heli_kills", "bradley_kills", "playtime", "rating",
+  "heli_kills", "bradley_kills", "boss_kills", "playtime", "rating",
 ] as const;
 
 export type StatTotals = Record<(typeof STAT_COLS)[number], number>;
@@ -602,6 +604,7 @@ export async function recordKills(
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 const ORDER_BY: Record<string, string> = {
   overall:    "SUM(s.rating) DESC",
+  boss:       "SUM(s.boss_kills) DESC",
   npc:        "SUM(s.scientist_kills + s.npc_kills) DESC",
   hunting:    "SUM(s.animal_kills) DESC",
   events:     "SUM(s.heli_kills + s.bradley_kills) DESC",
@@ -658,6 +661,7 @@ export async function queryLeaderboard(opts: {
        SUM(s.animal_kills)      AS animal_kills,
        SUM(s.heli_kills)        AS heli_kills,
        SUM(s.bradley_kills)     AS bradley_kills,
+       SUM(s.boss_kills)        AS boss_kills,
        SUM(s.playtime)          AS playtime,
        SUM(s.rating)            AS rating
      FROM player_stats s

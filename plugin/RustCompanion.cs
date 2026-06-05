@@ -70,7 +70,7 @@ namespace Oxide.Plugins
             public int StructuresPlaced, RocketsFired, C4Thrown, SatchelsThrown;
             public int NpcKills, HeliHits, BradleyHits;
             // PvE-focused
-            public int ScientistKills, AnimalKills, HeliKills, BradleyKills;
+            public int ScientistKills, AnimalKills, HeliKills, BradleyKills, BossKills;
             public int Playtime; // seconds since last flush
         }
 
@@ -453,6 +453,7 @@ namespace Oxide.Plugins
                     animalKills = d.AnimalKills,
                     heliKills = d.HeliKills,
                     bradleyKills = d.BradleyKills,
+                    bossKills = d.BossKills,
                     playtime = d.Playtime
                 });
             }
@@ -542,6 +543,15 @@ namespace Oxide.Plugins
             if (entity is BaseAnimalNPC) GetOrAdd(killer).AnimalKills++;
             else if (entity is PatrolHelicopter) GetOrAdd(killer).HeliKills++;
             else if (entity is BradleyAPC) GetOrAdd(killer).BradleyKills++;
+        }
+
+        // ── Hooks: Boss kills (fired by the ApBoss plugin) ─────────────────────
+        // The boss is a custom scientist, so it also counts as a scientist kill;
+        // that small overlap is intentional and negligible.
+        private void OnApBossKilled(BasePlayer killer, string bossName)
+        {
+            if (killer == null) return;
+            GetOrAdd(killer).BossKills++;
         }
 
         // ── Hooks: NPC humanoid kills (scientists vs other) ────────────────────

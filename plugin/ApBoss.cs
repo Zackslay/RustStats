@@ -103,7 +103,7 @@ namespace Oxide.Plugins
             var sub = args.Length > 0 ? args[0].ToLower() : "";
             if (sub == "spawn") { TrySpawnBoss(true); }
             else if (sub == "despawn") { RemoveBoss(false); player.ChatMessage("[ApBoss] Boss removed."); }
-            else if (sub == "where" && _boss.IsExists()) { player.ChatMessage($"[ApBoss] Boss at {GridFromPos(_boss.transform.position)}"); }
+            else if (sub == "where" && Alive(_boss)) { player.ChatMessage($"[ApBoss] Boss at {GridFromPos(_boss.transform.position)}"); }
             else player.ChatMessage("Usage: /apboss spawn | despawn | where");
         }
 
@@ -111,7 +111,7 @@ namespace Oxide.Plugins
         private void TrySpawnBoss(bool force = false)
         {
             if (NpcSpawn == null) return;
-            if (_boss.IsExists())
+            if (Alive(_boss))
             {
                 if (!force) return; // one boss at a time
                 RemoveBoss(false);
@@ -144,7 +144,7 @@ namespace Oxide.Plugins
             _despawnTimer?.Destroy();
             _despawnTimer = timer.Once(_cfg.DespawnMinutes * 60f, () =>
             {
-                if (_boss.IsExists())
+                if (Alive(_boss))
                 {
                     if (_cfg.AnnounceSpawn)
                         Broadcast($"<color=#dc2626>{_cfg.BossName}</color> has vanished. Better luck next time.");
@@ -267,11 +267,13 @@ namespace Oxide.Plugins
             _despawnTimer?.Destroy();
             _despawnTimer = null;
             _bossNetId = 0;
-            if (_boss.IsExists()) _boss.Kill();
+            if (Alive(_boss)) _boss.Kill();
             _boss = null;
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
+        private static bool Alive(BaseEntity e) => e != null && !e.IsDestroyed;
+
         private Vector3 FindSpawnPosition()
         {
             float size = (float)World.Size;

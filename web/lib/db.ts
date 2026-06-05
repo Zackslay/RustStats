@@ -49,7 +49,7 @@ async function exec(text: string, values?: unknown[]): Promise<void> {
 let statColsEnsured = false;
 export async function ensureStatColumns(): Promise<void> {
   if (statColsEnsured) return;
-  for (const c of ["scientist_kills", "animal_kills", "heli_kills", "bradley_kills"]) {
+  for (const c of ["scientist_kills", "animal_kills", "heli_kills", "bradley_kills", "satchels"]) {
     await exec(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS ${c} INTEGER NOT NULL DEFAULT 0`);
   }
   statColsEnsured = true;
@@ -108,7 +108,7 @@ export async function initSchema() {
       UNIQUE(steam_id, wipe_id)
     )
   `);
-  for (const c of ["scientist_kills", "animal_kills", "heli_kills", "bradley_kills"]) {
+  for (const c of ["scientist_kills", "animal_kills", "heli_kills", "bradley_kills", "satchels"]) {
     await exec(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS ${c} INTEGER NOT NULL DEFAULT 0`);
   }
   await exec(`
@@ -271,7 +271,7 @@ export async function applyStatDelta(
   d: {
     kills?: number; deaths?: number; headshots?: number;
     wood?: number; stone?: number; metalOre?: number; sulfurOre?: number;
-    structuresPlaced?: number; rocketsFired?: number; c4Thrown?: number;
+    structuresPlaced?: number; rocketsFired?: number; c4Thrown?: number; satchels?: number;
     npcKills?: number; heliHits?: number; bradleyHits?: number; playtime?: number;
     scientistKills?: number; animalKills?: number; heliKills?: number; bradleyKills?: number;
   }
@@ -297,14 +297,16 @@ export async function applyStatDelta(
        scientist_kills   = scientist_kills   + $15,
        animal_kills      = animal_kills      + $16,
        heli_kills        = heli_kills        + $17,
-       bradley_kills     = bradley_kills     + $18
-     WHERE steam_id = $19 AND wipe_id = $20`,
+       bradley_kills     = bradley_kills     + $18,
+       satchels          = satchels          + $19
+     WHERE steam_id = $20 AND wipe_id = $21`,
     [
       n(d.kills), n(d.deaths), n(d.headshots),
       n(d.wood), n(d.stone), n(d.metalOre), n(d.sulfurOre),
       n(d.structuresPlaced), n(d.rocketsFired), n(d.c4Thrown),
       n(d.npcKills), n(d.heliHits), n(d.bradleyHits), n(d.playtime),
       n(d.scientistKills), n(d.animalKills), n(d.heliKills), n(d.bradleyKills),
+      n(d.satchels),
       steamId, wipeId,
     ]
   );
@@ -316,6 +318,7 @@ export async function applyStatDelta(
        scientist_kills * 3 + npc_kills * 2 + animal_kills * 1 +
        (wood + stone + metal_ore + sulfur_ore) / 1000 +
        structures_placed / 2 +
+       (rockets_fired + c4_thrown + satchels) * 1 +
        playtime / 60 +
        kills * 2
      )) WHERE steam_id = $1 AND wipe_id = $2`,
@@ -424,7 +427,7 @@ export async function queryWeaponBreakdown(
 // ── Player profile ────────────────────────────────────────────────────────────
 const STAT_COLS = [
   "kills", "deaths", "headshots", "wood", "stone", "metal_ore", "sulfur_ore",
-  "structures_placed", "rockets_fired", "c4_thrown", "npc_kills",
+  "structures_placed", "rockets_fired", "c4_thrown", "satchels", "npc_kills",
   "heli_hits", "bradley_hits", "scientist_kills", "animal_kills",
   "heli_kills", "bradley_kills", "playtime", "rating",
 ] as const;
@@ -598,12 +601,13 @@ export async function recordKills(
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 const ORDER_BY: Record<string, string> = {
-  overall:   "SUM(s.rating) DESC",
-  npc:       "SUM(s.scientist_kills + s.npc_kills) DESC",
-  hunting:   "SUM(s.animal_kills) DESC",
-  events:    "SUM(s.heli_kills + s.bradley_kills) DESC",
-  gathering: "SUM(s.wood + s.stone + s.metal_ore + s.sulfur_ore) DESC",
-  building:  "SUM(s.structures_placed) DESC",
+  overall:    "SUM(s.rating) DESC",
+  npc:        "SUM(s.scientist_kills + s.npc_kills) DESC",
+  hunting:    "SUM(s.animal_kills) DESC",
+  events:     "SUM(s.heli_kills + s.bradley_kills) DESC",
+  gathering:  "SUM(s.wood + s.stone + s.metal_ore + s.sulfur_ore) DESC",
+  building:   "SUM(s.structures_placed) DESC",
+  explosives: "SUM(s.rockets_fired + s.c4_thrown + s.satchels) DESC",
 };
 
 export async function queryLeaderboard(opts: {
@@ -646,6 +650,7 @@ export async function queryLeaderboard(opts: {
        SUM(s.structures_placed) AS structures_placed,
        SUM(s.rockets_fired)     AS rockets_fired,
        SUM(s.c4_thrown)         AS c4_thrown,
+       SUM(s.satchels)          AS satchels,
        SUM(s.npc_kills)         AS npc_kills,
        SUM(s.heli_hits)         AS heli_hits,
        SUM(s.bradley_hits)      AS bradley_hits,

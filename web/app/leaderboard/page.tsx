@@ -18,6 +18,7 @@ interface PlayerRow {
   structures_placed: number;
   rockets_fired: number;
   c4_thrown: number;
+  satchels: number;
   npc_kills: number;
   heli_hits: number;
   bradley_hits: number;
@@ -29,7 +30,7 @@ interface PlayerRow {
   rating: number;
 }
 
-type Category = "overall" | "npc" | "hunting" | "events" | "gathering" | "building";
+type Category = "overall" | "npc" | "hunting" | "events" | "gathering" | "building" | "explosives";
 type WipeScope = "current" | "lifetime";
 
 const CATEGORIES: { id: Category; label: string; icon: string }[] = [
@@ -39,6 +40,7 @@ const CATEGORIES: { id: Category; label: string; icon: string }[] = [
   { id: "events", label: "Heli / Bradley", icon: "🚁" },
   { id: "gathering", label: "Gathering", icon: "⛏️" },
   { id: "building", label: "Building", icon: "🏗️" },
+  { id: "explosives", label: "Explosives", icon: "💣" },
 ];
 
 export default function LeaderboardPage() {
@@ -216,6 +218,14 @@ export default function LeaderboardPage() {
                 {category === "building" && (
                   <th className="px-4 py-3 text-right">Structures</th>
                 )}
+                {category === "explosives" && (
+                  <>
+                    <th className="px-4 py-3 text-right">Rockets</th>
+                    <th className="px-4 py-3 text-right">C4</th>
+                    <th className="px-4 py-3 text-right">Satchels</th>
+                    <th className="px-4 py-3 text-right">Total</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -307,6 +317,14 @@ export default function LeaderboardPage() {
                   )}
                   {category === "building" && (
                     <td className="px-4 py-3 text-right font-medium">{p.structures_placed.toLocaleString()}</td>
+                  )}
+                  {category === "explosives" && (
+                    <>
+                      <td className="px-4 py-3 text-right">{p.rockets_fired}</td>
+                      <td className="px-4 py-3 text-right text-red-400">{p.c4_thrown}</td>
+                      <td className="px-4 py-3 text-right text-orange-400">{p.satchels}</td>
+                      <td className="px-4 py-3 text-right font-medium">{p.rockets_fired + p.c4_thrown + p.satchels}</td>
+                    </>
                   )}
                 </tr>
               ))}

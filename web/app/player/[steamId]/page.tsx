@@ -125,7 +125,7 @@ export default function PlayerPage() {
               <Stat label="Playtime" value={formatPlaytime(t.playtime ?? 0)} />
               <Stat label="PvP Kills" value={t.kills ?? 0} />
               <Stat label="Deaths" value={t.deaths ?? 0} />
-              <Stat label="Rockets / C4" value={`${t.rockets_fired ?? 0} / ${t.c4_thrown ?? 0}`} />
+              <Stat label="Rocket/C4/Satchel" value={`${t.rockets_fired ?? 0}/${t.c4_thrown ?? 0}/${t.satchels ?? 0}`} />
             </section>
 
             {/* Gathering breakdown */}

@@ -67,7 +67,7 @@ namespace Oxide.Plugins
             public string Name;
             public int Kills, Deaths, Headshots;
             public int Wood, Stone, MetalOre, SulfurOre;
-            public int StructuresPlaced, RocketsFired, C4Thrown;
+            public int StructuresPlaced, RocketsFired, C4Thrown, SatchelsThrown;
             public int NpcKills, HeliHits, BradleyHits;
             // PvE-focused
             public int ScientistKills, AnimalKills, HeliKills, BradleyKills;
@@ -445,6 +445,7 @@ namespace Oxide.Plugins
                     structuresPlaced = d.StructuresPlaced,
                     rocketsFired = d.RocketsFired,
                     c4Thrown = d.C4Thrown,
+                    satchelsThrown = d.SatchelsThrown,
                     npcKills = d.NpcKills,
                     heliHits = d.HeliHits,
                     bradleyHits = d.BradleyHits,
@@ -608,6 +609,7 @@ namespace Oxide.Plugins
             var name = entity.ShortPrefabName;
             var d = GetOrAdd(player);
             if (name.Contains("c4")) d.C4Thrown++;
+            else if (name.Contains("satchel")) d.SatchelsThrown++;
         }
 
         private void OnRocketLaunched(BasePlayer player, BaseEntity entity)

@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
           kills: d.kills, deaths: d.deaths, headshots: d.headshots,
           wood: d.wood, stone: d.stone, metalOre: d.metalOre, sulfurOre: d.sulfurOre,
           structuresPlaced: d.structuresPlaced, rocketsFired: d.rocketsFired,
-          c4Thrown: d.c4Thrown, npcKills: d.npcKills,
+          c4Thrown: d.c4Thrown, satchels: d.satchelsThrown, npcKills: d.npcKills,
           heliHits: d.heliHits, bradleyHits: d.bradleyHits, playtime: d.playtime,
           scientistKills: d.scientistKills, animalKills: d.animalKills,
           heliKills: d.heliKills, bradleyKills: d.bradleyKills,

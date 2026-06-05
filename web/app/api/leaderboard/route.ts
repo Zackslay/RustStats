@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   // numbers so the client can do arithmetic / .toFixed() without crashing.
   const NUM_FIELDS = [
     "kills", "deaths", "headshots", "wood", "stone", "metal_ore", "sulfur_ore",
-    "structures_placed", "rockets_fired", "c4_thrown", "npc_kills",
+    "structures_placed", "rockets_fired", "c4_thrown", "satchels", "npc_kills",
     "heli_hits", "bradley_hits", "scientist_kills", "animal_kills",
     "heli_kills", "bradley_kills", "playtime", "rating",
   ];

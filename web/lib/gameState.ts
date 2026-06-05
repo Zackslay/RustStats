@@ -12,7 +12,7 @@ export interface PlayerPosition {
 }
 
 export interface ActiveEvent {
-  type: "heli" | "bradley" | "cargo" | "chinook";
+  type: "heli" | "bradley" | "cargo" | "chinook" | "boss";
   x: number;
   y: number;
   z: number;

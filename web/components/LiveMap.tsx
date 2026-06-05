@@ -32,6 +32,7 @@ const EVENT_ICONS: Record<string, string> = {
   bradley: "🛡️",
   cargo: "🚢",
   chinook: "🚁",
+  boss: "💀",
 };
 
 // CRS.Simple treats coordinates as CSS pixels at zoom 0.

@@ -17,7 +17,21 @@ const EVENT_COLORS: Record<string, string> = {
   bradley: "border-orange-500 text-orange-400",
   cargo: "border-blue-400 text-blue-300",
   chinook: "border-yellow-400 text-yellow-300",
+  boss: "border-red-600 text-red-500",
 };
+
+// Rust grid label from world coords (matches in-game): count=floor(size/(1024/7)).
+function gridFromXZ(x: number, z: number, mapSize: number): string {
+  const n = Math.max(1, Math.floor(mapSize / (1024 / 7)));
+  const cell = mapSize / n;
+  const half = mapSize / 2;
+  const col = Math.min(n - 1, Math.max(0, Math.floor((x + half) / cell)));
+  const row = Math.min(n - 1, Math.max(0, Math.floor((half - z) / cell)));
+  let s = "";
+  let c = col + 1;
+  while (c > 0) { s = String.fromCharCode(65 + ((c - 1) % 26)) + s; c = Math.floor((c - 1) / 26); }
+  return s + row;
+}
 
 export default function MapPage() {
   const [state, setState] = useState<GameState & { wipe?: Record<string, unknown> | null }>({
@@ -146,6 +160,7 @@ export default function MapPage() {
   );
 
   const monuments = state.server?.monuments ?? [];
+  const bossEvent = state.events.find((e) => e.type === "boss");
 
   const fetchState = useCallback(async () => {
     try {
@@ -306,6 +321,17 @@ export default function MapPage() {
               <div className="text-gray-400 animate-pulse">Loading map...</div>
             </div>
           )}
+          {bossEvent && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-600/90 border border-red-400 text-white text-xs font-semibold shadow-lg animate-pulse">
+              <span>💀 BOSS ACTIVE</span>
+              <span className="opacity-90">{bossEvent.label}</span>
+              <span className="opacity-75">· {gridFromXZ(bossEvent.x, bossEvent.z, mapSize)}</span>
+              {bossEvent.health !== undefined && (
+                <span className="opacity-75">· {bossEvent.health} HP</span>
+              )}
+            </div>
+          )}
+
           <LiveMap
             mapSize={mapSize}
             mapImageUrl={mapUrl}

@@ -10,8 +10,8 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("ApBoss", "SlayStudios", "1.0.0")]
-    [Description("Timed roaming boss event (NpcSpawn) with loot + Economics/ServerRewards rewards and dashboard boss-kill tracking")]
+    [Info("ApBoss", "SlayStudios", "1.1.0")]
+    [Description("Timed roaming boss event with tiers (NpcSpawn), loot + Economics/ServerRewards rewards and dashboard boss tracking")]
     public class ApBoss : RustPlugin
     {
         [PluginReference] private Plugin NpcSpawn, Economics, ServerRewards;
@@ -26,15 +26,29 @@ namespace Oxide.Plugins
             [JsonProperty("Skin ID")] public ulong SkinID { get; set; } = 0;
         }
 
+        private class BossTier
+        {
+            [JsonProperty("Tier name")] public string Name { get; set; } = "AP Marauder";
+            [JsonProperty("Spawn weight (relative chance)")] public float Weight { get; set; } = 60f;
+            [JsonProperty("Name colour (hex)")] public string Color { get; set; } = "#9ca3af";
+            [JsonProperty("Health")] public float Health { get; set; } = 3000f;
+            [JsonProperty("Damage scale")] public float DamageScale { get; set; } = 1.25f;
+            [JsonProperty("Economics reward")] public double EconomicsReward { get; set; } = 500;
+            [JsonProperty("ServerRewards points")] public int ServerRewardsPoints { get; set; } = 250;
+            [JsonProperty("Loot crate prefab")] public string LootCratePrefab { get; set; } =
+                "assets/prefabs/deployable/chinookcrate/codelockedhackablecrate.prefab";
+            [JsonProperty("Bonus loot items")] public List<LootItem> BonusLoot { get; set; } = new()
+            {
+                new LootItem { ShortName = "scrap", Amount = 250 },
+            };
+        }
+
         private class Configuration
         {
             [JsonProperty("Spawn interval (minutes)")] public float SpawnIntervalMinutes { get; set; } = 75f;
             [JsonProperty("First spawn delay (minutes)")] public float FirstSpawnDelayMinutes { get; set; } = 10f;
             [JsonProperty("Despawn after (minutes, if not killed)")] public float DespawnMinutes { get; set; } = 20f;
 
-            [JsonProperty("Boss display name")] public string BossName { get; set; } = "AP Warlord";
-            [JsonProperty("Boss health")] public float Health { get; set; } = 5000f;
-            [JsonProperty("Damage scale")] public float DamageScale { get; set; } = 1.5f;
             [JsonProperty("Roam range")] public float RoamRange { get; set; } = 60f;
             [JsonProperty("Chase range")] public float ChaseRange { get; set; } = 175f;
             [JsonProperty("Sense range")] public float SenseRange { get; set; } = 175f;
@@ -46,19 +60,17 @@ namespace Oxide.Plugins
             [JsonProperty("Announce kill")] public bool AnnounceKill { get; set; } = true;
             [JsonProperty("Discord webhook URL (optional)")] public string DiscordWebhook { get; set; } = "";
 
-            [JsonProperty("Economics reward (to killer)")] public double EconomicsReward { get; set; } = 1000;
-            [JsonProperty("ServerRewards points (to killer)")] public int ServerRewardsPoints { get; set; } = 500;
-
-            [JsonProperty("Loot crate prefab")] public string LootCratePrefab { get; set; } =
-                "assets/prefabs/deployable/chinookcrate/codelockedhackablecrate.prefab";
-            [JsonProperty("Bonus loot items (added to the crate)")] public List<LootItem> BonusLoot { get; set; } = new()
-            {
-                new LootItem { ShortName = "rifle.ak", Amount = 1 },
-                new LootItem { ShortName = "explosive.timed", Amount = 4 },
-                new LootItem { ShortName = "scrap", Amount = 500 },
-            };
-
             [JsonProperty("Report boss kills to dashboard (RustCompanion)")] public bool ReportToDashboard { get; set; } = true;
+
+            [JsonProperty("Boss tiers")] public List<BossTier> Tiers { get; set; } = new()
+            {
+                new BossTier { Name = "AP Marauder", Weight = 60f, Color = "#9ca3af", Health = 3000f, DamageScale = 1.25f, EconomicsReward = 500, ServerRewardsPoints = 250,
+                    BonusLoot = new() { new LootItem { ShortName = "scrap", Amount = 250 }, new LootItem { ShortName = "rifle.ak", Amount = 1 } } },
+                new BossTier { Name = "AP Warlord", Weight = 30f, Color = "#dc2626", Health = 6000f, DamageScale = 1.5f, EconomicsReward = 1000, ServerRewardsPoints = 500,
+                    BonusLoot = new() { new LootItem { ShortName = "scrap", Amount = 500 }, new LootItem { ShortName = "explosive.timed", Amount = 4 } } },
+                new BossTier { Name = "AP Overlord", Weight = 10f, Color = "#fbbf24", Health = 12000f, DamageScale = 1.8f, EconomicsReward = 2500, ServerRewardsPoints = 1250,
+                    BonusLoot = new() { new LootItem { ShortName = "scrap", Amount = 1000 }, new LootItem { ShortName = "explosive.timed", Amount = 10 }, new LootItem { ShortName = "rifle.ak", Amount = 2 } } },
+            };
         }
 
         protected override void LoadConfig()
@@ -66,6 +78,7 @@ namespace Oxide.Plugins
             base.LoadConfig();
             try { _cfg = Config.ReadObject<Configuration>(); }
             catch { _cfg = new Configuration(); }
+            if (_cfg.Tiers == null || _cfg.Tiers.Count == 0) _cfg.Tiers = new Configuration().Tiers;
             SaveConfig();
         }
 
@@ -75,6 +88,7 @@ namespace Oxide.Plugins
         // ── State ─────────────────────────────────────────────────────────────
         private ScientistNPC _boss;
         private ulong _bossNetId;
+        private BossTier _tier;
         private Timer _despawnTimer;
 
         private void OnServerInitialized()
@@ -90,10 +104,10 @@ namespace Oxide.Plugins
                 TrySpawnBoss();
                 timer.Every(_cfg.SpawnIntervalMinutes * 60f, () => TrySpawnBoss());
             });
-            Puts($"[ApBoss] Ready. Boss spawns every {_cfg.SpawnIntervalMinutes} min.");
+            Puts($"[ApBoss] Ready. {_cfg.Tiers.Count} tiers, spawns every {_cfg.SpawnIntervalMinutes} min.");
         }
 
-        private void Unload() => RemoveBoss(false);
+        private void Unload() => RemoveBoss();
 
         // ── Commands ──────────────────────────────────────────────────────────
         [ChatCommand("apboss")]
@@ -101,21 +115,28 @@ namespace Oxide.Plugins
         {
             if (!player.IsAdmin) { player.ChatMessage("You don't have permission."); return; }
             var sub = args.Length > 0 ? args[0].ToLower() : "";
-            if (sub == "spawn") { TrySpawnBoss(true); }
-            else if (sub == "despawn") { RemoveBoss(false); player.ChatMessage("[ApBoss] Boss removed."); }
-            else if (sub == "where" && Alive(_boss)) { player.ChatMessage($"[ApBoss] Boss at {GridFromPos(_boss.transform.position)}"); }
-            else player.ChatMessage("Usage: /apboss spawn | despawn | where");
+            if (sub == "spawn")
+            {
+                BossTier forced = args.Length > 1 ? _cfg.Tiers.FirstOrDefault(t => t.Name.Replace(" ", "").ToLower().Contains(args[1].ToLower())) : null;
+                TrySpawnBoss(true, forced);
+            }
+            else if (sub == "despawn") { RemoveBoss(); player.ChatMessage("[ApBoss] Boss removed."); }
+            else if (sub == "where" && Alive(_boss)) { player.ChatMessage($"[ApBoss] {_tier?.Name} at {GridFromPos(_boss.transform.position)}"); }
+            else player.ChatMessage("Usage: /apboss spawn [tier] | despawn | where");
         }
 
         // ── Spawning ──────────────────────────────────────────────────────────
-        private void TrySpawnBoss(bool force = false)
+        private void TrySpawnBoss(bool force = false, BossTier forced = null)
         {
             if (NpcSpawn == null) return;
             if (Alive(_boss))
             {
                 if (!force) return; // one boss at a time
-                RemoveBoss(false);
+                RemoveBoss();
             }
+
+            var tier = forced ?? PickTier();
+            if (tier == null) return;
 
             var pos = FindSpawnPosition();
             if (pos == Vector3.zero)
@@ -124,7 +145,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            var npc = NpcSpawn.Call("SpawnNpc", pos, BuildBossConfig()) as ScientistNPC;
+            var npc = NpcSpawn.Call("SpawnNpc", pos, BuildBossConfig(tier)) as ScientistNPC;
             if (npc == null)
             {
                 PrintError("[ApBoss] NpcSpawn returned null — check NpcSpawn config/version.");
@@ -133,12 +154,16 @@ namespace Oxide.Plugins
 
             _boss = npc;
             _bossNetId = npc.net.ID.Value;
+            _tier = tier;
+
+            // Let the dashboard show a live boss marker (RustCompanion relays it).
+            Interface.CallHook("OnApBossSpawned", _boss as BaseEntity, $"{tier.Name}");
 
             string grid = GridFromPos(pos);
             if (_cfg.AnnounceSpawn)
             {
-                Broadcast($"💀 <color=#dc2626>{_cfg.BossName}</color> has appeared at <color=#fbbf24>{grid}</color>! Hunt it down for rewards.");
-                SendDiscord($"💀 **{_cfg.BossName}** has spawned at **{grid}**.");
+                Broadcast($"💀 <color={tier.Color}>{tier.Name}</color> has appeared at <color=#fbbf24>{grid}</color>! Hunt it down for rewards.");
+                SendDiscord($"💀 **{tier.Name}** has spawned at **{grid}**.");
             }
 
             _despawnTimer?.Destroy();
@@ -147,13 +172,26 @@ namespace Oxide.Plugins
                 if (Alive(_boss))
                 {
                     if (_cfg.AnnounceSpawn)
-                        Broadcast($"<color=#dc2626>{_cfg.BossName}</color> has vanished. Better luck next time.");
-                    RemoveBoss(true);
+                        Broadcast($"<color={_tier.Color}>{_tier.Name}</color> has vanished. Better luck next time.");
+                    RemoveBoss();
                 }
             });
         }
 
-        private JObject BuildBossConfig()
+        private BossTier PickTier()
+        {
+            float total = _cfg.Tiers.Sum(t => Mathf.Max(0f, t.Weight));
+            if (total <= 0f) return _cfg.Tiers.FirstOrDefault();
+            float roll = UnityEngine.Random.Range(0f, total);
+            foreach (var t in _cfg.Tiers)
+            {
+                roll -= Mathf.Max(0f, t.Weight);
+                if (roll <= 0f) return t;
+            }
+            return _cfg.Tiers.Last();
+        }
+
+        private JObject BuildBossConfig(BossTier tier)
         {
             var belt = new JArray();
             var wear = new JArray();
@@ -166,11 +204,11 @@ namespace Oxide.Plugins
 
             return new JObject
             {
-                ["Name"] = _cfg.BossName,
+                ["Name"] = tier.Name,
                 ["WearItems"] = wear,
                 ["BeltItems"] = belt,
                 ["Kit"] = _cfg.Kit ?? "",
-                ["Health"] = _cfg.Health,
+                ["Health"] = tier.Health,
                 ["RoamRange"] = _cfg.RoamRange,
                 ["ChaseRange"] = _cfg.ChaseRange,
                 ["SenseRange"] = _cfg.SenseRange,
@@ -179,7 +217,7 @@ namespace Oxide.Plugins
                 ["CheckVisionCone"] = false,
                 ["VisionCone"] = 135f,
                 ["HostileTargetsOnly"] = false,
-                ["DamageScale"] = _cfg.DamageScale,
+                ["DamageScale"] = tier.DamageScale,
                 ["TurretDamageScale"] = 1f,
                 ["AimConeScale"] = 1f,
                 ["DisableRadio"] = true,
@@ -201,53 +239,56 @@ namespace Oxide.Plugins
             if (scientist == null || scientist.net == null) return;
             if (scientist.net.ID.Value != _bossNetId) return;
 
-            _bossNetId = 0;
-            _boss = null;
-            _despawnTimer?.Destroy();
-
+            var tier = _tier;
             var pos = scientist.transform.position;
             var killer = info?.InitiatorPlayer;
             string grid = GridFromPos(pos);
 
-            // Loot
-            SpawnLoot(pos);
+            // Clear state + notify dashboard before doing rewards.
+            _bossNetId = 0;
+            _boss = null;
+            _tier = null;
+            _despawnTimer?.Destroy();
+            Interface.CallHook("OnApBossDespawned");
 
-            // Rewards + announce
-            if (killer != null)
+            SpawnLoot(pos, tier);
+
+            if (killer != null && tier != null)
             {
-                if (_cfg.EconomicsReward > 0)
-                    Economics?.Call("Deposit", killer.UserIDString, _cfg.EconomicsReward);
-                if (_cfg.ServerRewardsPoints > 0)
-                    ServerRewards?.Call("AddPoints", killer.userID, _cfg.ServerRewardsPoints);
+                if (tier.EconomicsReward > 0)
+                    Economics?.Call("Deposit", killer.UserIDString, tier.EconomicsReward);
+                if (tier.ServerRewardsPoints > 0)
+                    ServerRewards?.Call("AddPoints", killer.userID, tier.ServerRewardsPoints);
 
                 if (_cfg.ReportToDashboard)
-                    Interface.CallHook("OnApBossKilled", killer, _cfg.BossName);
+                    Interface.CallHook("OnApBossKilled", killer, tier.Name);
 
-                killer.ChatMessage($"You slew the {_cfg.BossName}! Rewards delivered. Loot dropped at {grid}.");
+                killer.ChatMessage($"You slew the {tier.Name}! Rewards delivered. Loot dropped at {grid}.");
                 if (_cfg.AnnounceKill)
                 {
-                    Broadcast($"⚔️ <color=#34d399>{killer.displayName}</color> slew <color=#dc2626>{_cfg.BossName}</color> at <color=#fbbf24>{grid}</color>!");
-                    SendDiscord($"⚔️ **{killer.displayName}** killed **{_cfg.BossName}** at **{grid}**.");
+                    Broadcast($"⚔️ <color=#34d399>{killer.displayName}</color> slew <color={tier.Color}>{tier.Name}</color> at <color=#fbbf24>{grid}</color>!");
+                    SendDiscord($"⚔️ **{killer.displayName}** killed **{tier.Name}** at **{grid}**.");
                 }
             }
-            else if (_cfg.AnnounceKill)
+            else if (_cfg.AnnounceKill && tier != null)
             {
-                Broadcast($"<color=#dc2626>{_cfg.BossName}</color> was destroyed. Loot dropped at <color=#fbbf24>{grid}</color>.");
+                Broadcast($"<color={tier.Color}>{tier.Name}</color> was destroyed. Loot dropped at <color=#fbbf24>{grid}</color>.");
             }
         }
 
-        private void SpawnLoot(Vector3 pos)
+        private void SpawnLoot(Vector3 pos, BossTier tier)
         {
+            if (tier == null) return;
             try
             {
-                var crate = GameManager.server.CreateEntity(_cfg.LootCratePrefab, pos + Vector3.up * 0.5f, Quaternion.identity);
+                var crate = GameManager.server.CreateEntity(tier.LootCratePrefab, pos + Vector3.up * 0.5f, Quaternion.identity);
                 if (crate == null) return;
                 crate.Spawn();
 
                 var container = (crate as StorageContainer)?.inventory;
                 if (container != null)
                 {
-                    foreach (var li in _cfg.BonusLoot)
+                    foreach (var li in tier.BonusLoot)
                     {
                         if (string.IsNullOrEmpty(li.ShortName) || li.Amount <= 0) continue;
                         var item = ItemManager.CreateByName(li.ShortName, li.Amount, li.SkinID);
@@ -262,13 +303,15 @@ namespace Oxide.Plugins
             }
         }
 
-        private void RemoveBoss(bool announced)
+        private void RemoveBoss()
         {
             _despawnTimer?.Destroy();
             _despawnTimer = null;
             _bossNetId = 0;
+            _tier = null;
             if (Alive(_boss)) _boss.Kill();
             _boss = null;
+            Interface.CallHook("OnApBossDespawned");
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

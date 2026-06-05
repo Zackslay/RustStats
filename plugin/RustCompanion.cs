@@ -91,6 +91,10 @@ namespace Oxide.Plugins
         // entities) — that scan, run 4x every 2s, was the main source of lag.
         private readonly HashSet<BaseEntity> _trackedEvents = new();
 
+        // Live boss (set by the ApBoss plugin via hooks) — shown on the map.
+        private BaseEntity _liveBoss;
+        private string _liveBossLabel;
+
         private static bool IsEventEntity(BaseNetworkable e) =>
             e is PatrolHelicopter || e is BradleyAPC || e is CargoShip || e is CH47Helicopter;
 
@@ -415,6 +419,15 @@ namespace Oxide.Plugins
                 else if (e is CH47Helicopter)
                     events.Add(new { type = "chinook", x = pos.x, y = pos.y, z = pos.z, label = "Chinook" });
             }
+
+            // Live boss (from ApBoss).
+            if (_liveBoss != null && !_liveBoss.IsDestroyed)
+            {
+                var bp = _liveBoss.transform.position;
+                var hp = (_liveBoss as BaseCombatEntity)?.health ?? 0f;
+                events.Add(new { type = "boss", x = bp.x, y = bp.y, z = bp.z, health = Mathf.RoundToInt(hp), label = _liveBossLabel ?? "Boss" });
+            }
+
             payload["events"] = events;
 
             PostAsync("/api/plugin", payload);
@@ -552,6 +565,19 @@ namespace Oxide.Plugins
         {
             if (killer == null) return;
             GetOrAdd(killer).BossKills++;
+        }
+
+        // Live boss marker relay (fired by ApBoss).
+        private void OnApBossSpawned(BaseEntity boss, string label)
+        {
+            _liveBoss = boss;
+            _liveBossLabel = label;
+        }
+
+        private void OnApBossDespawned()
+        {
+            _liveBoss = null;
+            _liveBossLabel = null;
         }
 
         // ── Hooks: NPC humanoid kills (scientists vs other) ────────────────────

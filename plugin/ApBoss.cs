@@ -88,7 +88,7 @@ namespace Oxide.Plugins
             timer.Once(_cfg.FirstSpawnDelayMinutes * 60f, () =>
             {
                 TrySpawnBoss();
-                timer.Every(_cfg.SpawnIntervalMinutes * 60f, TrySpawnBoss);
+                timer.Every(_cfg.SpawnIntervalMinutes * 60f, () => TrySpawnBoss());
             });
             Puts($"[ApBoss] Ready. Boss spawns every {_cfg.SpawnIntervalMinutes} min.");
         }

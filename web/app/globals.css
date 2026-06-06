@@ -67,6 +67,15 @@ body {
 .event-bradley .event-emoji { filter: drop-shadow(0 0 5px #f97316); }
 .event-cargo .event-emoji   { filter: drop-shadow(0 0 5px #60a5fa); }
 .event-chinook .event-emoji { filter: drop-shadow(0 0 5px #facc15); }
+.event-boss .event-emoji {
+  font-size: 28px;
+  filter: drop-shadow(0 0 8px #dc2626);
+  animation: bosspulse 1.2s ease-in-out infinite;
+}
+@keyframes bosspulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+}
 
 /* ── Leaflet monument label ──────────────────────────────────────────── */
 .monument-marker {

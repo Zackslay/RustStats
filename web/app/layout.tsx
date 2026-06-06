@@ -12,9 +12,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const BRAND = process.env.NEXT_PUBLIC_BRAND || "RustStats";
+
 export const metadata: Metadata = {
-  title: "RustStats — Live Server Dashboard",
-  description: "Live map, leaderboards, and stats for your Rust server",
+  title: `${BRAND} — Live Server Dashboard`,
+  description: `Live map, leaderboards, boss events, and stats for ${BRAND}`,
 };
 
 export default function RootLayout({

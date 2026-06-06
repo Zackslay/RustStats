@@ -57,33 +57,65 @@ export default function Home() {
   const online = state ? Object.values(state.players).filter((p) => p.online).length : 0;
   const isLive = !!server && Date.now() / 1000 - (server.updatedAt ?? 0) < 30;
 
+  const brand = process.env.NEXT_PUBLIC_BRAND || "RUSTSTATS";
+  // Public connect address for the Join button: env override, else the server's
+  // reported ip:port (when it's a real public IP).
+  const reportedIp = server?.ip && server.ip !== "" && server.ip !== "0.0.0.0"
+    ? `${server.ip}:${server.port}` : "";
+  const connect = process.env.NEXT_PUBLIC_SERVER_CONNECT || reportedIp;
+
+  const [copied, setCopied] = useState(false);
+  const copyConnect = () => {
+    if (!connect) return;
+    navigator.clipboard?.writeText(connect).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[#0f0f0f] text-white flex flex-col">
       <NavBar />
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8 space-y-8">
         {/* Hero / server status */}
-        <section className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-6">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-3xl font-black tracking-tight">
-                RUST<span className="text-red-500">STATS</span>
-              </h1>
-              <p className="text-gray-400 text-sm mt-1">
+        <section className="relative overflow-hidden bg-gradient-to-br from-[#1a1010] to-[#161616] border border-[#2a2a2a] rounded-xl p-6">
+          <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-red-600/10 blur-3xl pointer-events-none" />
+          <div className="relative flex items-start justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs mb-1">
+                <span className={`w-2 h-2 rounded-full ${isLive ? "bg-emerald-500 animate-pulse" : "bg-gray-600"}`} />
+                <span className={isLive ? "text-emerald-400" : "text-gray-500"}>
+                  {isLive ? "● LIVE" : "Offline"}
+                </span>
+                <span className="text-gray-600">·</span>
+                <span className="text-gray-400">{brand}</span>
+              </div>
+              <h1 className="text-3xl font-black tracking-tight truncate">
                 {server?.name ?? "Waiting for server data…"}
-              </p>
+              </h1>
             </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span
-                className={`w-2 h-2 rounded-full ${isLive ? "bg-emerald-500 animate-pulse" : "bg-gray-600"}`}
-              />
-              <span className={isLive ? "text-emerald-400" : "text-gray-500"}>
-                {isLive ? "Online" : "Offline"}
-              </span>
-            </div>
+
+            {connect && (
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={`steam://connect/${connect}`}
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition-colors"
+                >
+                  ▶ Join Server
+                </a>
+                <button
+                  onClick={copyConnect}
+                  className="px-3 py-2 rounded-lg bg-[#0f0f0f] border border-[#2a2a2a] text-gray-300 hover:text-white text-xs"
+                  title="Copy connect IP"
+                >
+                  {copied ? "Copied!" : "Copy IP"}
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+          <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
             <Stat label="Players" value={`${online}${server?.maxPlayers ? ` / ${server.maxPlayers}` : ""}`} />
             <Stat label="Map Size" value={server?.mapSize ? `${server.mapSize}` : "—"} />
             <Stat label="Seed" value={server?.mapSeed ? `${server.mapSeed}` : "—"} />

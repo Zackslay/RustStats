@@ -15,7 +15,11 @@ export default function NavBar() {
   return (
     <header className="px-6 py-3 bg-[#161616] border-b border-[#2a2a2a] flex items-center justify-between sticky top-0 z-50">
       <Link href="/" className="text-red-500 font-bold text-xl tracking-tight">
-        RUST<span className="text-white">STATS</span>
+        {process.env.NEXT_PUBLIC_BRAND ? (
+          <span className="text-white">{process.env.NEXT_PUBLIC_BRAND}</span>
+        ) : (
+          <>RUST<span className="text-white">STATS</span></>
+        )}
       </Link>
       <nav className="flex items-center gap-1">
         {LINKS.map((l) => {

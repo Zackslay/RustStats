@@ -3,14 +3,18 @@
 import {
   Activity,
   Anchor,
+  CalendarDays,
   Copy,
+  Hammer,
   Map,
   Play,
+  Radio,
   Shield,
   Skull,
   Trophy,
   Users,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import NavBar from "@/components/NavBar";
@@ -43,21 +47,31 @@ interface Totals {
 export default function Home() {
   const [state, setState] = useState<(GameState & { wipe?: Record<string, unknown> | null }) | null>(null);
   const [top, setTop] = useState<TopRow[]>([]);
+  const [bossLeaders, setBossLeaders] = useState<TopRow[]>([]);
+  const [gatherLeaders, setGatherLeaders] = useState<TopRow[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
   const [copied, setCopied] = useState(false);
   const [nowSec, setNowSec] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
-      const [gs, lb, st] = await Promise.all([
+      const [gs, lb, boss, gather, st] = await Promise.all([
         fetch("/api/gamestate").then((r) => (r.ok ? r.json() : null)),
         fetch("/api/leaderboard?category=overall&wipe=current&limit=5").then((r) =>
+          r.ok ? r.json() : null
+        ),
+        fetch("/api/leaderboard?category=boss&wipe=current&limit=3").then((r) =>
+          r.ok ? r.json() : null
+        ),
+        fetch("/api/leaderboard?category=gathering&wipe=current&limit=3").then((r) =>
           r.ok ? r.json() : null
         ),
         fetch("/api/stats").then((r) => (r.ok ? r.json() : null)),
       ]);
       if (gs) setState(gs);
       if (lb) setTop(lb.players ?? []);
+      if (boss) setBossLeaders(boss.players ?? []);
+      if (gather) setGatherLeaders(gather.players ?? []);
       if (st) setTotals(st);
     } catch {
       // Keep the last good dashboard payload visible through transient API errors.
@@ -79,7 +93,10 @@ export default function Home() {
     ? `${server.ip}:${server.port}` : "";
   const connect = process.env.NEXT_PUBLIC_SERVER_CONNECT || reportedIp;
 
+  const wipeDate = server?.wipeDate ?? null;
   const topEvent = useMemo(() => state?.events.find((ev) => ev.type === "boss") ?? state?.events[0], [state?.events]);
+  const activeBoss = state?.events.find((ev) => ev.type === "boss");
+  const wipeStarted = wipeDate ? new Date(wipeDate * 1000) : null;
 
   const copyConnect = () => {
     if (!connect) return;
@@ -165,6 +182,37 @@ export default function Home() {
           </section>
         )}
 
+        <section className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+          <OperationCard
+            icon={Skull}
+            label="Boss Status"
+            value={activeBoss ? activeBoss.label : "No boss active"}
+            detail={activeBoss ? `${gridFromXZ(activeBoss.x, activeBoss.z, server?.mapSize ?? 3500)}${activeBoss.health !== undefined ? ` - ${activeBoss.health} HP` : ""}` : "Next spawn will broadcast in-game and here."}
+            tone={activeBoss ? "red" : "zinc"}
+          />
+          <OperationCard
+            icon={Trophy}
+            label="Top Operator"
+            value={top[0]?.display_name ?? "No champion yet"}
+            detail={top[0] ? `${top[0].rating} rating this wipe` : "Stats start when players create activity."}
+            tone="yellow"
+          />
+          <OperationCard
+            icon={Hammer}
+            label="Gather Rush"
+            value={gatherLeaders[0]?.display_name ?? "No gather leader"}
+            detail={totals ? `${compact(totals.gathered)} total resources logged` : "Waiting for resource stats."}
+            tone="emerald"
+          />
+          <OperationCard
+            icon={CalendarDays}
+            label="Wipe Intel"
+            value={wipeDate ? relativeTime(wipeDate) : "No wipe data"}
+            detail={wipeStarted ? `Started ${wipeStarted.toLocaleDateString()}` : "Current wipe has not reported yet."}
+            tone="sky"
+          />
+        </section>
+
         {state && state.events.length > 1 && (
           <Panel title="Live Events">
             <div className="flex flex-wrap gap-2">
@@ -182,9 +230,10 @@ export default function Home() {
           </Panel>
         )}
 
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <NavCard href="/map" icon={Map} title="Live Map" desc="Players, events, monuments, boss markers, and recent death locations." />
           <NavCard href="/leaderboard" icon={Trophy} title="Leaderboard" desc="Current wipe and lifetime PvE rankings across boss, event, and gathering stats." />
+          <NavCard href="/wipe" icon={Radio} title="Wipe Room" desc="Wipe progress, server totals, weekly champions, and live server story." />
         </section>
 
         {totals && (
@@ -192,7 +241,7 @@ export default function Home() {
             <StatCard label="Players" value={totals.players.toLocaleString()} />
             <StatCard label="NPC Kills" value={totals.npcKills.toLocaleString()} />
             <StatCard label="Animals" value={totals.animalKills.toLocaleString()} />
-            <StatCard label="Boss Kills" value={totals.bossKills.toLocaleString()} accent="text-red-400" />
+            <StatCard label="Boss Clears" value={totals.bossKills.toLocaleString()} accent="text-red-400" />
             <StatCard label="Gathered" value={compact(totals.gathered)} />
             <StatCard label="Playtime" value={formatPlaytime(totals.playtime)} />
           </section>
@@ -233,6 +282,14 @@ export default function Home() {
             <KillFeed limit={15} scope="current" />
           </Panel>
         </section>
+
+        <Panel title="Current Wipe Champions">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <ChampionCard title="Overall" icon={Trophy} player={top[0]} metric={top[0] ? `${top[0].rating} rating` : "No rating yet"} />
+            <ChampionCard title="Boss Slayer" icon={Skull} player={bossLeaders[0]} metric={bossLeaders[0] ? `${bossLeaders[0].rating} rating` : "No boss kills yet"} />
+            <ChampionCard title="Resource Lead" icon={Hammer} player={gatherLeaders[0]} metric={gatherLeaders[0] ? `${gatherLeaders[0].rating} rating` : "No gather stats yet"} />
+          </div>
+        </Panel>
       </main>
     </PageShell>
   );
@@ -249,7 +306,60 @@ function EventIcon({ type, compact = false }: { type: string; compact?: boolean 
   );
 }
 
-function NavCard({ href, icon: Icon, title, desc }: { href: string; icon: typeof Map; title: string; desc: string }) {
+function OperationCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  detail: string;
+  tone: "red" | "yellow" | "emerald" | "sky" | "zinc";
+}) {
+  const tones = {
+    red: "border-red-900/70 bg-red-950/25 text-red-300",
+    yellow: "border-yellow-900/70 bg-yellow-950/20 text-yellow-300",
+    emerald: "border-emerald-900/70 bg-emerald-950/20 text-emerald-300",
+    sky: "border-sky-900/70 bg-sky-950/20 text-sky-300",
+    zinc: "border-zinc-800 bg-zinc-950/70 text-zinc-300",
+  };
+  return (
+    <div className={`rounded-lg border p-4 ${tones[tone]}`}>
+      <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest">
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        {label}
+      </div>
+      <p className="truncate text-lg font-black text-white">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-zinc-500">{detail}</p>
+    </div>
+  );
+}
+
+function ChampionCard({ title, icon: Icon, player, metric }: { title: string; icon: LucideIcon; player?: TopRow; metric: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-black/20 p-3">
+      <span className="flex h-10 w-10 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950 text-red-400">
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">{title}</p>
+        {player ? (
+          <Link href={`/player/${player.steam_id}`} className="block truncate text-sm font-bold text-white hover:text-red-300">
+            {player.display_name}
+          </Link>
+        ) : (
+          <p className="truncate text-sm font-bold text-zinc-500">Unclaimed</p>
+        )}
+        <p className="text-xs text-zinc-600">{metric}</p>
+      </div>
+    </div>
+  );
+}
+
+function NavCard({ href, icon: Icon, title, desc }: { href: string; icon: LucideIcon; title: string; desc: string }) {
   return (
     <Link
       href={href}

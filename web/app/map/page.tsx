@@ -1,6 +1,7 @@
 "use client";
 
 import { Activity, ChevronDown, Crosshair, MapPinned, Settings, Shield, Skull, Users, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -40,6 +41,7 @@ export default function MapPage() {
   const [showPlayers, setShowPlayers] = useState(true);
   const [showKills, setShowKills] = useState(false);
   const [nowSec, setNowSec] = useState(0);
+  const [focusTarget, setFocusTarget] = useState<{ x: number; z: number; key: string } | null>(null);
 
   const mapSize = (state.wipe?.map_size as number) ?? state.server?.mapSize ?? 3500;
   const [margin, setMargin] = useState(() => defaultMargin(3500));
@@ -220,7 +222,13 @@ export default function MapPage() {
             <SidebarSection title="Active Events" defaultOpen>
               <div className="flex flex-col gap-1.5">
                 {state.events.map((event: ActiveEvent, i) => (
-                  <EventRow key={`${event.type}-${i}`} event={event} mapSize={mapSize} />
+                  <EventRow
+                    key={`${event.type}-${i}`}
+                    event={event}
+                    mapSize={mapSize}
+                    active={focusTarget?.key === `${event.type}-${i}-${event.x}-${event.z}`}
+                    onFocus={() => setFocusTarget({ x: event.x, z: event.z, key: `${event.type}-${i}-${event.x}-${event.z}` })}
+                  />
                 ))}
               </div>
             </SidebarSection>
@@ -279,6 +287,7 @@ export default function MapPage() {
             deaths={showDeaths ? deaths : []}
             calibrating={calibrating}
             onCalibrate={onCalibrate}
+            focusTarget={focusTarget}
           />
 
           <div className="absolute right-3 top-3 z-[1000] flex gap-2">
@@ -347,7 +356,7 @@ function SidebarSection({ title, children }: { title: string; children: React.Re
   );
 }
 
-function ToggleButton({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof Users; label: string }) {
+function ToggleButton({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: LucideIcon; label: string }) {
   return (
     <button
       onClick={onClick}
@@ -362,15 +371,31 @@ function ToggleButton({ active, onClick, icon: Icon, label }: { active: boolean;
   );
 }
 
-function EventRow({ event, mapSize }: { event: ActiveEvent; mapSize: number }) {
+function EventRow({
+  event,
+  mapSize,
+  active,
+  onFocus,
+}: {
+  event: ActiveEvent;
+  mapSize: number;
+  active: boolean;
+  onFocus: () => void;
+}) {
   const Icon = event.type === "boss" ? Skull : event.type === "bradley" ? Shield : Activity;
   return (
-    <div className={`flex items-center gap-2 rounded-md border bg-black/25 px-2 py-1.5 text-xs ${EVENT_COLORS[event.type] ?? "border-zinc-700 text-zinc-400"}`}>
+    <button
+      onClick={onFocus}
+      className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors hover:bg-zinc-900/80 ${
+        active ? "bg-zinc-900 ring-1 ring-red-500/60" : "bg-black/25"
+      } ${EVENT_COLORS[event.type] ?? "border-zinc-700 text-zinc-400"}`}
+      title="Center map on this event"
+    >
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate font-semibold">{event.label}</span>
       <span className="text-zinc-500">{gridFromXZ(event.x, event.z, mapSize)}</span>
       {event.health !== undefined && <span className="text-zinc-500">{event.health} HP</span>}
-    </div>
+    </button>
   );
 }
 

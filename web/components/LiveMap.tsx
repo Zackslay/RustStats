@@ -15,6 +15,7 @@ interface Props {
   deaths?: DeathMarker[];
   calibrating?: boolean;
   onCalibrate?: (latNorm: number, lngNorm: number) => void;
+  focusTarget?: { x: number; z: number; key: string } | null;
 }
 
 export interface DeathMarker {
@@ -46,6 +47,7 @@ export default function LiveMap({
   deaths = [],
   calibrating = false,
   onCalibrate,
+  focusTarget = null,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
@@ -102,6 +104,13 @@ export default function LiveMap({
       el.style.cursor = "";
     };
   }, [calibrating, leafletLoaded, onCalibrate]);
+
+  useEffect(() => {
+    if (!mapRef.current || !focusTarget) return;
+    const map = mapRef.current;
+    const zoom = Math.max(map.getZoom(), 0.5);
+    map.flyTo(rustToLatLng(focusTarget.x, focusTarget.z), zoom, { duration: 0.45 });
+  }, [focusTarget, rustToLatLng]);
 
   useEffect(() => {
     if (!mapRef.current || !L) return;

@@ -4,7 +4,7 @@ import { fetchSteamAvatars } from "@/lib/steam";
 
 export const dynamic = "force-dynamic";
 
-type Category = "overall" | "pvp" | "gathering" | "explosives" | "building" | "npc";
+type Category = "overall" | "boss" | "events" | "hunting" | "pvp" | "gathering" | "explosives" | "building" | "npc";
 type WipeScope = "current" | "lifetime";
 
 export async function GET(req: NextRequest) {

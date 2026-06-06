@@ -373,7 +373,7 @@ export async function getServerTotals(wipeId: number): Promise<ServerTotals> {
        COUNT(DISTINCT steam_id)                               AS players,
        COALESCE(SUM(scientist_kills + npc_kills), 0)          AS npc_kills,
        COALESCE(SUM(animal_kills), 0)                         AS animal_kills,
-       COALESCE(SUM(heli_kills + bradley_kills), 0)           AS boss_kills,
+       COALESCE(SUM(heli_kills + bradley_kills + boss_kills), 0) AS boss_kills,
        COALESCE(SUM(wood + stone + metal_ore + sulfur_ore),0) AS gathered,
        COALESCE(SUM(structures_placed), 0)                   AS structures,
        COALESCE(SUM(playtime), 0)                            AS playtime

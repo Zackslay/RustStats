@@ -1,6 +1,7 @@
 "use client";
 
-import { ExternalLink, Shield, Skull, Star, Trophy, Wallet } from "lucide-react";
+import { Award, Bomb, Building2, Crosshair, ExternalLink, Hammer, HeartPulse, Shield, Skull, Star, Trophy, Wallet } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import { EmptyState, PageShell, Panel, StatCard } from "@/components/DashboardUi";
@@ -60,6 +61,7 @@ export default function PlayerPage() {
   const totals = profile?.[scope] ?? {};
   const gathered = (totals.wood ?? 0) + (totals.stone ?? 0) + (totals.metal_ore ?? 0) + (totals.sulfur_ore ?? 0);
   const weapons = scope === "current" ? profile?.weaponsCurrent ?? [] : profile?.weaponsLifetime ?? [];
+  const badges = buildBadges(totals, gathered);
 
   return (
     <PageShell className="flex flex-col">
@@ -144,6 +146,18 @@ export default function PlayerPage() {
               <StatCard label="Deaths" value={totals.deaths ?? 0} />
             </section>
 
+            <Panel title="Earned Badges">
+              {badges.length === 0 ? (
+                <p className="py-3 text-xs text-zinc-500">No badges earned yet. Boss kills, event clears, gathering, building, and playtime unlock profile badges.</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {badges.map((badge) => (
+                    <BadgeCard key={badge.title} badge={badge} />
+                  ))}
+                </div>
+              )}
+            </Panel>
+
             <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatCard label="Wood" value={(totals.wood ?? 0).toLocaleString()} accent="text-amber-600" />
               <StatCard label="Stone" value={(totals.stone ?? 0).toLocaleString()} accent="text-zinc-300" />
@@ -164,6 +178,49 @@ export default function PlayerPage() {
         )}
       </main>
     </PageShell>
+  );
+}
+
+interface Badge {
+  title: string;
+  detail: string;
+  icon: LucideIcon;
+  tone: string;
+}
+
+function buildBadges(totals: Totals, gathered: number): Badge[] {
+  const badges: Badge[] = [];
+  const bossKills = totals.boss_kills ?? 0;
+  const eventKills = (totals.heli_kills ?? 0) + (totals.bradley_kills ?? 0);
+  const npcKills = (totals.scientist_kills ?? 0) + (totals.npc_kills ?? 0);
+  const explosives = (totals.rockets_fired ?? 0) + (totals.c4_thrown ?? 0) + (totals.satchels ?? 0);
+  const playHours = Math.floor((totals.playtime ?? 0) / 3600);
+
+  if (bossKills > 0) badges.push({ title: "Boss Slayer", detail: `${bossKills} AP boss kills`, icon: Skull, tone: "border-red-800 bg-red-950/25 text-red-300" });
+  if (eventKills >= 3) badges.push({ title: "Event Hunter", detail: `${eventKills} heli/bradley clears`, icon: Shield, tone: "border-orange-800 bg-orange-950/20 text-orange-300" });
+  if (npcKills >= 100) badges.push({ title: "NPC Reaper", detail: `${npcKills.toLocaleString()} NPC kills`, icon: Crosshair, tone: "border-cyan-800 bg-cyan-950/20 text-cyan-300" });
+  if (gathered >= 100000) badges.push({ title: "Resource Baron", detail: `${gathered.toLocaleString()} gathered`, icon: Hammer, tone: "border-emerald-800 bg-emerald-950/20 text-emerald-300" });
+  if ((totals.structures_placed ?? 0) >= 500) badges.push({ title: "Base Architect", detail: `${(totals.structures_placed ?? 0).toLocaleString()} structures`, icon: Building2, tone: "border-sky-800 bg-sky-950/20 text-sky-300" });
+  if (explosives >= 25) badges.push({ title: "Demolition Crew", detail: `${explosives} explosives used`, icon: Bomb, tone: "border-yellow-800 bg-yellow-950/20 text-yellow-300" });
+  if (playHours >= 24) badges.push({ title: "Wipe Grinder", detail: `${playHours}h playtime`, icon: Trophy, tone: "border-purple-800 bg-purple-950/20 text-purple-300" });
+  if ((totals.deaths ?? 0) === 0 && (totals.playtime ?? 0) > 7200) badges.push({ title: "Still Standing", detail: "No deaths with 2h+ playtime", icon: HeartPulse, tone: "border-zinc-700 bg-zinc-950 text-zinc-300" });
+  if (badges.length === 0 && (totals.rating ?? 0) > 0) badges.push({ title: "On The Board", detail: `${totals.rating} rating earned`, icon: Award, tone: "border-zinc-700 bg-zinc-950 text-zinc-300" });
+
+  return badges;
+}
+
+function BadgeCard({ badge }: { badge: Badge }) {
+  const Icon = badge.icon;
+  return (
+    <div className={`flex items-center gap-3 rounded-lg border p-3 ${badge.tone}`}>
+      <span className="flex h-10 w-10 items-center justify-center rounded-md border border-current/30 bg-black/20">
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-black text-white">{badge.title}</span>
+        <span className="block truncate text-xs text-zinc-500">{badge.detail}</span>
+      </span>
+    </div>
   );
 }
 

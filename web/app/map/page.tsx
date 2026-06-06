@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { GameState, ActiveEvent, Monument } from "@/lib/gameState";
 import KillFeed from "@/components/KillFeed";
+import { gridFromXZ } from "@/lib/format";
 
 import type { DeathMarker } from "@/components/LiveMap";
 
@@ -19,19 +20,6 @@ const EVENT_COLORS: Record<string, string> = {
   chinook: "border-yellow-400 text-yellow-300",
   boss: "border-red-600 text-red-500",
 };
-
-// Rust grid label from world coords (matches in-game): count=floor(size/(1024/7)).
-function gridFromXZ(x: number, z: number, mapSize: number): string {
-  const n = Math.max(1, Math.floor(mapSize / (1024 / 7)));
-  const cell = mapSize / n;
-  const half = mapSize / 2;
-  const col = Math.min(n - 1, Math.max(0, Math.floor((x + half) / cell)));
-  const row = Math.min(n - 1, Math.max(0, Math.floor((half - z) / cell)));
-  let s = "";
-  let c = col + 1;
-  while (c > 0) { s = String.fromCharCode(65 + ((c - 1) % 26)) + s; c = Math.floor((c - 1) / 26); }
-  return s + row;
-}
 
 export default function MapPage() {
   const [state, setState] = useState<GameState & { wipe?: Record<string, unknown> | null }>({

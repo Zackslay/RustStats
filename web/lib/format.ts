@@ -12,6 +12,20 @@ export function relativeTime(unixSeconds: number): string {
   return `${d}d ago`;
 }
 
+// Rust grid label from world coords (matches in-game): count=floor(size/(1024/7)),
+// cell=size/count, column letters + 0-indexed row from the north edge.
+export function gridFromXZ(x: number, z: number, mapSize: number): string {
+  const n = Math.max(1, Math.floor(mapSize / (1024 / 7)));
+  const cell = mapSize / n;
+  const half = mapSize / 2;
+  const col = Math.min(n - 1, Math.max(0, Math.floor((x + half) / cell)));
+  const row = Math.min(n - 1, Math.max(0, Math.floor((half - z) / cell)));
+  let s = "";
+  let c = col + 1;
+  while (c > 0) { s = String.fromCharCode(65 + ((c - 1) % 26)) + s; c = Math.floor((c - 1) / 26); }
+  return s + row;
+}
+
 // Compact large numbers: 1234 -> 1.2k, 3400000 -> 3.4M
 export function compact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;

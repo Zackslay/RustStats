@@ -6,7 +6,11 @@ import NavBar from "@/components/NavBar";
 import KillFeed from "@/components/KillFeed";
 import PopulationChart from "@/components/PopulationChart";
 import type { GameState } from "@/lib/gameState";
-import { compact, formatPlaytime, relativeTime } from "@/lib/format";
+import { compact, formatPlaytime, gridFromXZ, relativeTime } from "@/lib/format";
+
+const EVENT_ICON: Record<string, string> = {
+  heli: "🚁", bradley: "🛡️", cargo: "🚢", chinook: "🚁", boss: "💀",
+};
 
 interface TopRow {
   rank: number;
@@ -125,6 +129,32 @@ export default function Home() {
             />
           </div>
         </section>
+
+        {/* Live events */}
+        {state && state.events.length > 0 && (
+          <section className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4">
+            <h2 className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Live Events</h2>
+            <div className="flex flex-wrap gap-2">
+              {state.events.map((ev, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 text-xs border rounded-lg px-3 py-1.5 bg-black/30 ${
+                    ev.type === "boss" ? "border-red-600 text-red-400" : "border-[#2a2a2a] text-gray-300"
+                  }`}
+                >
+                  <span>{EVENT_ICON[ev.type] ?? "❓"}</span>
+                  <span className="font-semibold">{ev.label}</span>
+                  <span className="text-gray-500">
+                    {gridFromXZ(ev.x, ev.z, server?.mapSize ?? 3500)}
+                  </span>
+                  {ev.health !== undefined && (
+                    <span className="text-gray-500">{ev.health} HP</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Nav cards */}
         <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">

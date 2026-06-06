@@ -15,6 +15,7 @@ import {
   applyStatDelta,
   recordKills,
   recordPopulationSample,
+  updateBalances,
 } from "@/lib/db";
 
 const PLUGIN_SECRET = process.env.PLUGIN_SECRET ?? "changeme";
@@ -111,6 +112,13 @@ export async function POST(req: NextRequest) {
           heliKills: d.heliKills, bradleyKills: d.bradleyKills, bossKills: d.bossKills,
         });
       })
+    );
+  }
+
+  // ── Economy balances (money / RP) ────────────────────────────────────────────
+  if (Array.isArray(body.balances)) {
+    await updateBalances(
+      body.balances as Array<{ steamId: string; money?: number; rp?: number }>
     );
   }
 

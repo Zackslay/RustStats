@@ -18,6 +18,8 @@ interface Profile {
     avatar_url: string;
     first_seen: number;
     last_seen: number;
+    money: number;
+    rp: number;
   } | null;
   current: Totals;
   lifetime: Totals;
@@ -83,8 +85,14 @@ export default function PlayerPage() {
                 <h1 className="text-2xl font-bold truncate">
                   {profile?.player?.display_name ?? "Loading…"}
                 </h1>
-                <div className="text-xs text-gray-500 mt-1 flex gap-3 flex-wrap">
+                <div className="text-xs text-gray-500 mt-1 flex gap-3 flex-wrap items-center">
                   {profile?.player?.last_seen && <span>Last seen {relativeTime(profile.player.last_seen)}</span>}
+                  {(profile?.player?.money ?? 0) > 0 && (
+                    <span className="text-emerald-400">💰 {(profile!.player!.money).toLocaleString()}</span>
+                  )}
+                  {(profile?.player?.rp ?? 0) > 0 && (
+                    <span className="text-sky-400">⭐ {(profile!.player!.rp).toLocaleString()} RP</span>
+                  )}
                   <a
                     href={`https://steamcommunity.com/profiles/${steamId}`}
                     target="_blank"

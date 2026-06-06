@@ -4,6 +4,7 @@ using System.Text;
 using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Libraries;
+using Oxide.Core.Plugins;
 using UnityEngine;
 
 namespace Oxide.Plugins
@@ -12,6 +13,8 @@ namespace Oxide.Plugins
     [Description("Streams live server data to a companion web dashboard")]
     public class RustCompanion : RustPlugin
     {
+        [PluginReference] private Plugin Economics, ServerRewards;
+
         // ── Config ────────────────────────────────────────────────────────────
         private Configuration _cfg;
 
@@ -110,6 +113,7 @@ namespace Oxide.Plugins
             timer.Every(_cfg.UpdateInterval, SendLiveUpdate);
             timer.Every(_cfg.StatFlushInterval, FlushStats);
             timer.Every(60f, AccumulatePlaytime);
+            timer.Every(30f, SendBalances);
             if (string.IsNullOrEmpty(_cfg.MapImageUrl))
                 timer.Once(60f, TryUploadMap);
             else
@@ -611,6 +615,14 @@ namespace Oxide.Plugins
             AddGatherStat(GetOrAdd(player), item.info.shortname, item.amount);
         }
 
+        // Bonus finishing-hit resources (otherwise gathering totals undercount).
+        private void OnDispenserBonus(ResourceDispenser dispenser, BaseEntity entity, Item item)
+        {
+            var player = entity as BasePlayer;
+            if (player == null || item == null) return;
+            AddGatherStat(GetOrAdd(player), item.info.shortname, item.amount);
+        }
+
         private void OnCollectiblePickup(CollectibleEntity collectible, BasePlayer player)
         {
             if (collectible?.itemList == null || player == null) return;
@@ -659,6 +671,32 @@ namespace Oxide.Plugins
         {
             // Flush connection event so the player appears in the DB quickly
             PostAsync("/api/plugin", new { players = new[] { new { steamId = player.UserIDString, name = player.displayName, x = 0f, y = 0f, z = 0f, health = 100, online = true } } });
+        }
+
+        // ── Economy: balances (money / RP) for online players, every 30s ───────
+        private void SendBalances()
+        {
+            if (Economics == null && ServerRewards == null) return;
+            var list = new List<object>();
+            foreach (var p in BasePlayer.activePlayerList)
+            {
+                if (p == null || !p.IsConnected) continue;
+                double money = 0; int rp = 0;
+                if (Economics != null)
+                {
+                    var b = Economics.Call("Balance", p.userID);
+                    if (b is double d) money = d;
+                    else if (b is int bi) money = bi;
+                }
+                if (ServerRewards != null)
+                {
+                    var pts = ServerRewards.Call("CheckPoints", p.userID);
+                    if (pts is int i) rp = i;
+                }
+                list.Add(new { steamId = p.UserIDString, money, rp });
+            }
+            if (list.Count == 0) return;
+            PostAsync("/api/plugin", new Dictionary<string, object> { ["balances"] = list });
         }
 
         // Add 60s of playtime for every connected player, once per minute.

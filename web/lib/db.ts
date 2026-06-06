@@ -44,6 +44,30 @@ async function exec(text: string, values?: unknown[]): Promise<void> {
   await pool.query(text, values);
 }
 
+// Self-healing migration for player economy columns (money / RP).
+let playerEcoColsEnsured = false;
+export async function ensurePlayerEconomyColumns(): Promise<void> {
+  if (playerEcoColsEnsured) return;
+  await exec(`ALTER TABLE players ADD COLUMN IF NOT EXISTS money REAL NOT NULL DEFAULT 0`);
+  await exec(`ALTER TABLE players ADD COLUMN IF NOT EXISTS rp INTEGER NOT NULL DEFAULT 0`);
+  playerEcoColsEnsured = true;
+}
+
+export async function updateBalances(
+  balances: Array<{ steamId: string; money?: number; rp?: number }>
+): Promise<void> {
+  if (!balances || balances.length === 0) return;
+  await ensurePlayerEconomyColumns();
+  for (const b of balances) {
+    if (!b.steamId) continue;
+    await exec(
+      `INSERT INTO players (steam_id, display_name, money, rp) VALUES ($1, $1, $2, $3)
+       ON CONFLICT (steam_id) DO UPDATE SET money = EXCLUDED.money, rp = EXCLUDED.rp`,
+      [b.steamId, Math.round(b.money ?? 0), Math.round(b.rp ?? 0)]
+    );
+  }
+}
+
 // Self-healing migration for the PvE stat columns so reads/writes work even if
 // /api/setup hasn't been re-run after a deploy. Runs once per process.
 let statColsEnsured = false;
@@ -63,9 +87,13 @@ export async function initSchema() {
       display_name TEXT NOT NULL,
       avatar_url   TEXT NOT NULL DEFAULT '',
       first_seen   BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
-      last_seen    BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+      last_seen    BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+      money        REAL NOT NULL DEFAULT 0,
+      rp           INTEGER NOT NULL DEFAULT 0
     )
   `);
+  await exec(`ALTER TABLE players ADD COLUMN IF NOT EXISTS money REAL NOT NULL DEFAULT 0`);
+  await exec(`ALTER TABLE players ADD COLUMN IF NOT EXISTS rp INTEGER NOT NULL DEFAULT 0`);
   await exec(`
     CREATE TABLE IF NOT EXISTS wipes (
       id         SERIAL PRIMARY KEY,
@@ -443,6 +471,8 @@ export interface PlayerProfile {
     avatar_url: string;
     first_seen: number;
     last_seen: number;
+    money: number;
+    rp: number;
   } | null;
   current: StatTotals;
   lifetime: StatTotals;
@@ -463,12 +493,13 @@ function coerceTotals(row: Record<string, unknown> | undefined): StatTotals {
 
 export async function getPlayerProfile(steamId: string): Promise<PlayerProfile> {
   await ensureStatColumns();
+  await ensurePlayerEconomyColumns();
   const wipeId = await getCurrentWipeId();
   const sumExpr = STAT_COLS.map((c) => `COALESCE(SUM(${c}),0) AS ${c}`).join(", ");
 
   const [players, current, lifetime, weaponsCurrent, weaponsLifetime] = await Promise.all([
     query<PlayerProfile["player"]>(
-      `SELECT steam_id, display_name, avatar_url, first_seen, last_seen
+      `SELECT steam_id, display_name, avatar_url, first_seen, last_seen, money, rp
        FROM players WHERE steam_id = $1`,
       [steamId]
     ),

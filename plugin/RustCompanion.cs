@@ -97,6 +97,7 @@ namespace Oxide.Plugins
         // Live boss (set by the ApBoss plugin via hooks) — shown on the map.
         private BaseEntity _liveBoss;
         private string _liveBossLabel;
+        private float _liveBossScale = 1f;
 
         private static bool IsEventEntity(BaseNetworkable e) =>
             e is PatrolHelicopter || e is BradleyAPC || e is CargoShip || e is CH47Helicopter;
@@ -429,7 +430,7 @@ namespace Oxide.Plugins
             {
                 var bp = _liveBoss.transform.position;
                 var hp = (_liveBoss as BaseCombatEntity)?.health ?? 0f;
-                events.Add(new { type = "boss", x = bp.x, y = bp.y, z = bp.z, health = Mathf.RoundToInt(hp), label = _liveBossLabel ?? "Boss" });
+                events.Add(new { type = "boss", x = bp.x, y = bp.y, z = bp.z, health = Mathf.RoundToInt(hp), label = _liveBossLabel ?? "Boss", scale = _liveBossScale });
             }
 
             payload["events"] = events;
@@ -572,16 +573,18 @@ namespace Oxide.Plugins
         }
 
         // Live boss marker relay (fired by ApBoss).
-        private void OnApBossSpawned(BaseEntity boss, string label)
+        private void OnApBossSpawned(BaseEntity boss, string label, float scale)
         {
             _liveBoss = boss;
             _liveBossLabel = label;
+            _liveBossScale = scale > 0f ? scale : 1f;
         }
 
         private void OnApBossDespawned()
         {
             _liveBoss = null;
             _liveBossLabel = null;
+            _liveBossScale = 1f;
         }
 
         // ── Hooks: NPC humanoid kills (scientists vs other) ────────────────────

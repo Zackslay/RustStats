@@ -6,6 +6,7 @@ using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Libraries;
 using Oxide.Core.Plugins;
+using Oxide.Game.Rust.Cui;
 using UnityEngine;
 
 namespace Oxide.Plugins
@@ -33,6 +34,7 @@ namespace Oxide.Plugins
             [JsonProperty("Name colour (hex)")] public string Color { get; set; } = "#9ca3af";
             [JsonProperty("Health")] public float Health { get; set; } = 3000f;
             [JsonProperty("Damage scale")] public float DamageScale { get; set; } = 1.25f;
+            [JsonProperty("Map marker scale (1.0 = normal, harder = bigger)")] public float MarkerScale { get; set; } = 1.0f;
             [JsonProperty("Economics reward")] public double EconomicsReward { get; set; } = 500;
             [JsonProperty("ServerRewards points")] public int ServerRewardsPoints { get; set; } = 250;
             [JsonProperty("Loot crate prefab")] public string LootCratePrefab { get; set; } =
@@ -60,15 +62,23 @@ namespace Oxide.Plugins
             [JsonProperty("Announce kill")] public bool AnnounceKill { get; set; } = true;
             [JsonProperty("Discord webhook URL (optional)")] public string DiscordWebhook { get; set; } = "";
 
+            [JsonProperty("Show boss spawn banner UI")] public bool ShowBossSpawnBanner { get; set; } = true;
+            [JsonProperty("Boss spawn banner duration (seconds)")] public float BossSpawnBannerSeconds { get; set; } = 15f;
+            [JsonProperty("Boss spawn banner title")] public string BossSpawnBannerTitle { get; set; } = "BOSS EVENT ACTIVE";
+            [JsonProperty("Boss spawn banner subtitle")] public string BossSpawnBannerSubtitle { get; set; } = "Hunt it down for rewards";
+            [JsonProperty("Boss spawn banner background colour (RGBA)")] public string BossSpawnBannerBackground { get; set; } = "0.08 0.02 0.02 0.92";
+            [JsonProperty("Boss spawn banner accent colour (RGBA)")] public string BossSpawnBannerAccent { get; set; } = "0.86 0.15 0.15 1";
+            [JsonProperty("Boss spawn banner text colour (RGBA)")] public string BossSpawnBannerText { get; set; } = "1 1 1 1";
+
             [JsonProperty("Report boss kills to dashboard (RustCompanion)")] public bool ReportToDashboard { get; set; } = true;
 
             [JsonProperty("Boss tiers")] public List<BossTier> Tiers { get; set; } = new()
             {
-                new BossTier { Name = "AP Marauder", Weight = 60f, Color = "#9ca3af", Health = 3000f, DamageScale = 1.25f, EconomicsReward = 500, ServerRewardsPoints = 250,
+                new BossTier { Name = "AP Marauder", Weight = 60f, Color = "#9ca3af", Health = 3000f, DamageScale = 1.25f, MarkerScale = 1.0f, EconomicsReward = 500, ServerRewardsPoints = 250,
                     BonusLoot = new() { new LootItem { ShortName = "scrap", Amount = 250 }, new LootItem { ShortName = "rifle.ak", Amount = 1 } } },
-                new BossTier { Name = "AP Warlord", Weight = 30f, Color = "#dc2626", Health = 6000f, DamageScale = 1.5f, EconomicsReward = 1000, ServerRewardsPoints = 500,
+                new BossTier { Name = "AP Warlord", Weight = 30f, Color = "#dc2626", Health = 6000f, DamageScale = 1.5f, MarkerScale = 1.3f, EconomicsReward = 1000, ServerRewardsPoints = 500,
                     BonusLoot = new() { new LootItem { ShortName = "scrap", Amount = 500 }, new LootItem { ShortName = "explosive.timed", Amount = 4 } } },
-                new BossTier { Name = "AP Overlord", Weight = 10f, Color = "#fbbf24", Health = 12000f, DamageScale = 1.8f, EconomicsReward = 2500, ServerRewardsPoints = 1250,
+                new BossTier { Name = "AP Overlord", Weight = 10f, Color = "#fbbf24", Health = 12000f, DamageScale = 1.8f, MarkerScale = 1.6f, EconomicsReward = 2500, ServerRewardsPoints = 1250,
                     BonusLoot = new() { new LootItem { ShortName = "scrap", Amount = 1000 }, new LootItem { ShortName = "explosive.timed", Amount = 10 }, new LootItem { ShortName = "rifle.ak", Amount = 2 } } },
             };
         }
@@ -89,7 +99,10 @@ namespace Oxide.Plugins
         private ScientistNPC _boss;
         private ulong _bossNetId;
         private BossTier _tier;
+        private string _bossGrid;
         private Timer _despawnTimer;
+        private Timer _bannerTimer;
+        private const string BossBannerUi = "ApBoss.BossBanner";
 
         private void OnServerInitialized()
         {
@@ -108,6 +121,16 @@ namespace Oxide.Plugins
         }
 
         private void Unload() => RemoveBoss();
+
+        private void OnPlayerConnected(BasePlayer player)
+        {
+            if (!_cfg.ShowBossSpawnBanner || !Alive(_boss) || _tier == null) return;
+            timer.Once(2f, () =>
+            {
+                if (player != null && player.IsConnected && Alive(_boss) && _tier != null)
+                    ShowBossBanner(player, _tier, _bossGrid ?? GridFromPos(_boss.transform.position));
+            });
+        }
 
         // ── Commands ──────────────────────────────────────────────────────────
         [ChatCommand("apboss")]
@@ -157,9 +180,11 @@ namespace Oxide.Plugins
             _tier = tier;
 
             // Let the dashboard show a live boss marker (RustCompanion relays it).
-            Interface.CallHook("OnApBossSpawned", _boss as BaseEntity, $"{tier.Name}");
+            Interface.CallHook("OnApBossSpawned", _boss as BaseEntity, tier.Name, tier.MarkerScale);
 
             string grid = GridFromPos(pos);
+            _bossGrid = grid;
+            ShowBossBanner(tier, grid);
             if (_cfg.AnnounceSpawn)
             {
                 Broadcast($"💀 <color={tier.Color}>{tier.Name}</color> has appeared at <color=#fbbf24>{grid}</color>! Hunt it down for rewards.");
@@ -248,7 +273,9 @@ namespace Oxide.Plugins
             _bossNetId = 0;
             _boss = null;
             _tier = null;
+            _bossGrid = null;
             _despawnTimer?.Destroy();
+            DestroyBossBanner();
             Interface.CallHook("OnApBossDespawned");
 
             SpawnLoot(pos, tier);
@@ -307,15 +334,111 @@ namespace Oxide.Plugins
         {
             _despawnTimer?.Destroy();
             _despawnTimer = null;
+            _bannerTimer?.Destroy();
+            _bannerTimer = null;
             _bossNetId = 0;
             _tier = null;
+            _bossGrid = null;
             if (Alive(_boss)) _boss.Kill();
             _boss = null;
+            DestroyBossBanner();
             Interface.CallHook("OnApBossDespawned");
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
         private static bool Alive(BaseEntity e) => e != null && !e.IsDestroyed;
+
+        private void ShowBossBanner(BossTier tier, string grid)
+        {
+            if (!_cfg.ShowBossSpawnBanner || tier == null) return;
+
+            foreach (var player in BasePlayer.activePlayerList)
+                ShowBossBanner(player, tier, grid);
+
+            _bannerTimer?.Destroy();
+            float seconds = Mathf.Max(1f, _cfg.BossSpawnBannerSeconds);
+            _bannerTimer = timer.Once(seconds, DestroyBossBanner);
+        }
+
+        private void ShowBossBanner(BasePlayer player, BossTier tier, string grid)
+        {
+            if (player == null || !player.IsConnected || tier == null) return;
+
+            CuiHelper.DestroyUi(player, BossBannerUi);
+
+            var elements = new CuiElementContainer();
+            elements.Add(new CuiPanel
+            {
+                Image = { Color = _cfg.BossSpawnBannerBackground },
+                RectTransform = { AnchorMin = "0.285 0.905", AnchorMax = "0.715 0.985" },
+                CursorEnabled = false
+            }, "Overlay", BossBannerUi);
+
+            elements.Add(new CuiPanel
+            {
+                Image = { Color = _cfg.BossSpawnBannerAccent },
+                RectTransform = { AnchorMin = "0 0", AnchorMax = "0.018 1" },
+                CursorEnabled = false
+            }, BossBannerUi);
+
+            elements.Add(new CuiLabel
+            {
+                Text =
+                {
+                    Text = _cfg.BossSpawnBannerTitle,
+                    FontSize = 13,
+                    Align = TextAnchor.UpperLeft,
+                    Color = _cfg.BossSpawnBannerAccent
+                },
+                RectTransform = { AnchorMin = "0.045 0.58", AnchorMax = "0.62 0.92" }
+            }, BossBannerUi);
+
+            elements.Add(new CuiLabel
+            {
+                Text =
+                {
+                    Text = $"{tier.Name} spawned at grid {grid}",
+                    FontSize = 18,
+                    Align = TextAnchor.MiddleLeft,
+                    Color = _cfg.BossSpawnBannerText
+                },
+                RectTransform = { AnchorMin = "0.045 0.16", AnchorMax = "0.74 0.66" }
+            }, BossBannerUi);
+
+            elements.Add(new CuiLabel
+            {
+                Text =
+                {
+                    Text = _cfg.BossSpawnBannerSubtitle,
+                    FontSize = 11,
+                    Align = TextAnchor.LowerLeft,
+                    Color = "0.82 0.82 0.82 1"
+                },
+                RectTransform = { AnchorMin = "0.045 0.04", AnchorMax = "0.74 0.26" }
+            }, BossBannerUi);
+
+            elements.Add(new CuiLabel
+            {
+                Text =
+                {
+                    Text = grid,
+                    FontSize = 24,
+                    Align = TextAnchor.MiddleCenter,
+                    Color = _cfg.BossSpawnBannerText
+                },
+                RectTransform = { AnchorMin = "0.76 0.12", AnchorMax = "0.96 0.86" }
+            }, BossBannerUi);
+
+            CuiHelper.AddUi(player, elements);
+        }
+
+        private void DestroyBossBanner()
+        {
+            foreach (var player in BasePlayer.activePlayerList)
+                CuiHelper.DestroyUi(player, BossBannerUi);
+            _bannerTimer?.Destroy();
+            _bannerTimer = null;
+        }
 
         private Vector3 FindSpawnPosition()
         {

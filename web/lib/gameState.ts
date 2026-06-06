@@ -18,6 +18,7 @@ export interface ActiveEvent {
   z: number;
   health?: number;
   label: string;
+  scale?: number; // marker size multiplier (boss tiers)
 }
 
 export interface ServerInfo {

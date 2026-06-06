@@ -172,14 +172,16 @@ export default function LiveMap({
 
     for (const ev of state.events) {
       const pos = rustToLatLng(ev.x, ev.z);
+      const scale = Math.max(1, Math.min(2, ev.scale ?? 1)); // tier size, capped
+      const sz = Math.round(42 * scale);
       const icon = L.divIcon({
         className: "",
-        html: `<div class="event-marker event-${ev.type}">
+        html: `<div class="event-marker event-${ev.type}" style="transform:scale(${scale})">
           <span class="event-glyph">${EVENT_GLYPHS[ev.type] ?? "?"}</span>
           <span class="event-label">${escapeHtml(ev.label)}</span>
         </div>`,
-        iconSize: [42, 42],
-        iconAnchor: [21, 21],
+        iconSize: [sz, sz],
+        iconAnchor: [sz / 2, sz / 2],
       });
       const marker = L.marker(pos, { icon }).addTo(map);
       if (ev.health !== undefined) {

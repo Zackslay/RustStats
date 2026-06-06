@@ -1,16 +1,25 @@
 "use client";
 
+import {
+  Activity,
+  Anchor,
+  Copy,
+  Map,
+  Play,
+  Shield,
+  Skull,
+  Trophy,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import NavBar from "@/components/NavBar";
 import KillFeed from "@/components/KillFeed";
 import PopulationChart from "@/components/PopulationChart";
+import { EmptyState, PageShell, Panel, StatCard, StatusPill } from "@/components/DashboardUi";
 import type { GameState } from "@/lib/gameState";
 import { compact, formatPlaytime, gridFromXZ, relativeTime } from "@/lib/format";
-
-const EVENT_ICON: Record<string, string> = {
-  heli: "🚁", bradley: "🛡️", cargo: "🚢", chinook: "🚁", boss: "💀",
-};
+import { usePolling } from "@/lib/usePolling";
 
 interface TopRow {
   rank: number;
@@ -35,6 +44,8 @@ export default function Home() {
   const [state, setState] = useState<(GameState & { wipe?: Record<string, unknown> | null }) | null>(null);
   const [top, setTop] = useState<TopRow[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [nowSec, setNowSec] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
@@ -48,159 +59,170 @@ export default function Home() {
       if (gs) setState(gs);
       if (lb) setTop(lb.players ?? []);
       if (st) setTotals(st);
-    } catch {}
+    } catch {
+      // Keep the last good dashboard payload visible through transient API errors.
+    }
   }, []);
 
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 5000);
-    return () => clearInterval(id);
-  }, [refresh]);
+  const tickClock = useCallback(() => {
+    setNowSec(Math.floor(Date.now() / 1000));
+  }, []);
+
+  usePolling(refresh, 5000);
+  usePolling(tickClock, 1000);
 
   const server = state?.server ?? null;
   const online = state ? Object.values(state.players).filter((p) => p.online).length : 0;
-  const isLive = !!server && Date.now() / 1000 - (server.updatedAt ?? 0) < 30;
-
-  const brand = process.env.NEXT_PUBLIC_BRAND || "RUSTSTATS";
-  // Public connect address for the Join button: env override, else the server's
-  // reported ip:port (when it's a real public IP).
+  const isLive = !!server && nowSec > 0 && nowSec - (server.updatedAt ?? 0) < 30;
+  const brand = process.env.NEXT_PUBLIC_BRAND || "RustStats";
   const reportedIp = server?.ip && server.ip !== "" && server.ip !== "0.0.0.0"
     ? `${server.ip}:${server.port}` : "";
   const connect = process.env.NEXT_PUBLIC_SERVER_CONNECT || reportedIp;
 
-  const [copied, setCopied] = useState(false);
+  const topEvent = useMemo(() => state?.events.find((ev) => ev.type === "boss") ?? state?.events[0], [state?.events]);
+
   const copyConnect = () => {
     if (!connect) return;
     navigator.clipboard?.writeText(connect).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      window.setTimeout(() => setCopied(false), 1500);
     });
   };
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-white flex flex-col">
+    <PageShell className="flex flex-col">
       <NavBar />
 
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8 space-y-8">
-        {/* Hero / server status */}
-        <section className="relative overflow-hidden bg-gradient-to-br from-[#1a1010] to-[#161616] border border-[#2a2a2a] rounded-xl p-6">
-          <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-red-600/10 blur-3xl pointer-events-none" />
-          <div className="relative flex items-start justify-between gap-4 flex-wrap">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6">
+        <section className="rounded-lg border border-zinc-800 bg-zinc-950/75 p-5 shadow-2xl shadow-black/30">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs mb-1">
-                <span className={`w-2 h-2 rounded-full ${isLive ? "bg-emerald-500 animate-pulse" : "bg-gray-600"}`} />
-                <span className={isLive ? "text-emerald-400" : "text-gray-500"}>
-                  {isLive ? "● LIVE" : "Offline"}
-                </span>
-                <span className="text-gray-600">·</span>
-                <span className="text-gray-400">{brand}</span>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <StatusPill live={isLive} label={isLive ? "Live" : "Offline"} />
+                <span className="text-xs font-semibold uppercase tracking-widest text-zinc-500">{brand}</span>
+                {state?.lastUpdate ? (
+                  <span className="text-xs text-zinc-600">Updated {new Date(state.lastUpdate).toLocaleTimeString()}</span>
+                ) : null}
               </div>
-              <h1 className="text-3xl font-black tracking-tight truncate">
-                {server?.name ?? "Waiting for server data…"}
+              <h1 className="truncate text-3xl font-black tracking-tight text-white sm:text-4xl">
+                {server?.name ?? "Waiting for server data"}
               </h1>
+              <p className="mt-2 max-w-2xl text-sm text-zinc-400">
+                Live population, event tracking, PvE leaderboards, and player stats from the connected Rust plugin.
+              </p>
             </div>
 
-            {connect && (
-              <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={`steam://connect/${connect}`}
-                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition-colors"
-                >
-                  ▶ Join Server
-                </a>
-                <button
-                  onClick={copyConnect}
-                  className="px-3 py-2 rounded-lg bg-[#0f0f0f] border border-[#2a2a2a] text-gray-300 hover:text-white text-xs"
-                  title="Copy connect IP"
-                >
-                  {copied ? "Copied!" : "Copy IP"}
-                </button>
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {connect ? (
+                <>
+                  <a
+                    href={`steam://connect/${connect}`}
+                    className="inline-flex h-10 items-center gap-2 rounded-md bg-red-600 px-4 text-sm font-bold text-white transition-colors hover:bg-red-500"
+                  >
+                    <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+                    Join Server
+                  </a>
+                  <button
+                    onClick={copyConnect}
+                    className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+                    title="Copy connect IP"
+                  >
+                    <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                    {copied ? "Copied" : "Copy IP"}
+                  </button>
+                </>
+              ) : (
+                <span className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-500">
+                  Connect address unavailable
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
-            <Stat label="Players" value={`${online}${server?.maxPlayers ? ` / ${server.maxPlayers}` : ""}`} />
-            <Stat label="Map Size" value={server?.mapSize ? `${server.mapSize}` : "—"} />
-            <Stat label="Seed" value={server?.mapSeed ? `${server.mapSeed}` : "—"} />
-            <Stat
-              label="Wiped"
-              value={server?.wipeDate ? `${relativeTime(server.wipeDate)}` : "—"}
-            />
+          <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatCard icon={Users} label="Players" value={`${online}${server?.maxPlayers ? ` / ${server.maxPlayers}` : ""}`} />
+            <StatCard icon={Map} label="Map Size" value={server?.mapSize ? `${server.mapSize}` : "-"} />
+            <StatCard icon={Shield} label="Seed" value={server?.mapSeed ? `${server.mapSeed}` : "-"} />
+            <StatCard label="Wiped" value={server?.wipeDate ? `${relativeTime(server.wipeDate)}` : "-"} />
           </div>
         </section>
 
-        {/* Live events */}
-        {state && state.events.length > 0 && (
-          <section className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4">
-            <h2 className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Live Events</h2>
+        {topEvent && (
+          <section className="rounded-lg border border-red-900/60 bg-red-950/25 p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <EventIcon type={topEvent.type} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-red-300">Priority Event</p>
+                <p className="truncate text-sm font-bold text-white">{topEvent.label}</p>
+              </div>
+              <span className="rounded-md border border-red-800/70 bg-black/25 px-2.5 py-1 text-xs font-semibold text-red-100">
+                {gridFromXZ(topEvent.x, topEvent.z, server?.mapSize ?? 3500)}
+              </span>
+              {topEvent.health !== undefined && (
+                <span className="text-xs font-semibold text-red-200">{topEvent.health} HP</span>
+              )}
+            </div>
+          </section>
+        )}
+
+        {state && state.events.length > 1 && (
+          <Panel title="Live Events">
             <div className="flex flex-wrap gap-2">
               {state.events.map((ev, i) => (
                 <div
-                  key={i}
-                  className={`flex items-center gap-2 text-xs border rounded-lg px-3 py-1.5 bg-black/30 ${
-                    ev.type === "boss" ? "border-red-600 text-red-400" : "border-[#2a2a2a] text-gray-300"
-                  }`}
+                  key={`${ev.type}-${i}`}
+                  className="flex items-center gap-2 rounded-md border border-zinc-800 bg-black/25 px-3 py-2 text-xs text-zinc-300"
                 >
-                  <span>{EVENT_ICON[ev.type] ?? "❓"}</span>
+                  <EventIcon type={ev.type} compact />
                   <span className="font-semibold">{ev.label}</span>
-                  <span className="text-gray-500">
-                    {gridFromXZ(ev.x, ev.z, server?.mapSize ?? 3500)}
-                  </span>
-                  {ev.health !== undefined && (
-                    <span className="text-gray-500">{ev.health} HP</span>
-                  )}
+                  <span className="text-zinc-500">{gridFromXZ(ev.x, ev.z, server?.mapSize ?? 3500)}</span>
                 </div>
               ))}
             </div>
-          </section>
+          </Panel>
         )}
 
-        {/* Nav cards */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <NavCard href="/map" icon="🗺️" title="LIVE MAP" desc="Players, heli, bradley, cargo & monuments" />
-          <NavCard href="/leaderboard" icon="🏆" title="LEADERBOARD" desc="Kills, gathering, explosives & more" />
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <NavCard href="/map" icon={Map} title="Live Map" desc="Players, events, monuments, boss markers, and recent death locations." />
+          <NavCard href="/leaderboard" icon={Trophy} title="Leaderboard" desc="Current wipe and lifetime PvE rankings across boss, event, and gathering stats." />
         </section>
 
-        {/* This-wipe totals */}
         {totals && (
-          <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <Stat label="Players" value={totals.players.toLocaleString()} />
-            <Stat label="NPC Kills" value={totals.npcKills.toLocaleString()} />
-            <Stat label="Animals" value={totals.animalKills.toLocaleString()} />
-            <Stat label="Heli/Bradley" value={totals.bossKills.toLocaleString()} />
-            <Stat label="Gathered" value={compact(totals.gathered)} />
-            <Stat label="Playtime" value={formatPlaytime(totals.playtime)} />
+          <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <StatCard label="Players" value={totals.players.toLocaleString()} />
+            <StatCard label="NPC Kills" value={totals.npcKills.toLocaleString()} />
+            <StatCard label="Animals" value={totals.animalKills.toLocaleString()} />
+            <StatCard label="Boss Kills" value={totals.bossKills.toLocaleString()} accent="text-red-400" />
+            <StatCard label="Gathered" value={compact(totals.gathered)} />
+            <StatCard label="Playtime" value={formatPlaytime(totals.playtime)} />
           </section>
         )}
 
-        {/* Population history */}
-        <Panel title="Population (last 24h)">
+        <Panel title="Population - Last 24h">
           <PopulationChart sinceSeconds={86400} />
         </Panel>
 
-        {/* Top players + kill feed */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Panel title="Top Players" action={<Link href="/leaderboard" className="text-xs text-gray-500 hover:text-white">View all →</Link>}>
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Panel title="Top Players" action={<Link href="/leaderboard" className="text-xs font-semibold text-zinc-500 hover:text-white">View all</Link>}>
             {top.length === 0 ? (
-              <p className="text-gray-600 text-xs px-1 py-2">No stats yet.</p>
+              <EmptyState>No stats yet.</EmptyState>
             ) : (
-              <ul className="flex flex-col divide-y divide-[#1e1e1e]">
+              <ul className="flex flex-col divide-y divide-zinc-900">
                 {top.map((p) => (
                   <li key={p.steam_id} className="flex items-center gap-3 py-2">
-                    <span className="text-gray-500 text-xs w-5 text-center">#{p.rank}</span>
+                    <span className="w-7 text-center text-xs font-bold text-zinc-500">#{p.rank}</span>
                     {p.avatar_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.avatar_url} alt="" className="w-6 h-6 rounded-full" />
+                      <img src={p.avatar_url} alt="" className="h-8 w-8 rounded-full border border-zinc-800" />
                     ) : (
-                      <div className="w-6 h-6 rounded-full bg-[#2a2a2a] flex items-center justify-center text-[10px] text-gray-500">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-[11px] font-bold text-zinc-500">
                         {p.display_name?.[0]?.toUpperCase()}
                       </div>
                     )}
-                    <Link href={`/player/${p.steam_id}`} className="text-sm font-medium truncate flex-1 hover:underline">
+                    <Link href={`/player/${p.steam_id}`} className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-200 hover:text-white">
                       {p.display_name}
                     </Link>
-                    <span className="text-xs font-bold text-yellow-400 w-16 text-right">{p.rating} pts</span>
+                    <span className="w-20 text-right text-xs font-bold text-yellow-300">{p.rating} pts</span>
                   </li>
                 ))}
               </ul>
@@ -211,47 +233,35 @@ export default function Home() {
             <KillFeed limit={15} scope="current" />
           </Panel>
         </section>
-
-        <p className="text-[11px] text-gray-600 text-center">
-          Last update: {state?.lastUpdate ? new Date(state.lastUpdate).toLocaleTimeString() : "—"}
-        </p>
       </main>
-    </div>
+    </PageShell>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function EventIcon({ type, compact = false }: { type: string; compact?: boolean }) {
+  const Icon = type === "boss" ? Skull : type === "cargo" ? Anchor : type === "bradley" ? Shield : Activity;
   return (
-    <div className="bg-[#0f0f0f] border border-[#222] rounded-lg p-3">
-      <div className="text-[10px] uppercase tracking-widest text-gray-500">{label}</div>
-      <div className="text-lg font-bold mt-0.5">{value}</div>
-    </div>
+    <span className={`inline-flex items-center justify-center rounded-md border ${
+      type === "boss" ? "border-red-700 bg-red-950 text-red-300" : "border-zinc-800 bg-zinc-950 text-zinc-400"
+    } ${compact ? "h-6 w-6" : "h-9 w-9"}`}>
+      <Icon className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} aria-hidden="true" />
+    </span>
   );
 }
 
-function NavCard({ href, icon, title, desc }: { href: string; icon: string; title: string; desc: string }) {
+function NavCard({ href, icon: Icon, title, desc }: { href: string; icon: typeof Map; title: string; desc: string }) {
   return (
     <Link
       href={href}
-      className="flex items-center gap-4 bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 hover:border-red-600 hover:bg-[#1a1a1a] transition-all group"
+      className="group flex items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4 transition-colors hover:border-red-700 hover:bg-zinc-950"
     >
-      <span className="text-3xl">{icon}</span>
-      <div>
-        <div className="font-bold text-sm tracking-wide group-hover:text-red-400 transition-colors">{title}</div>
-        <div className="text-xs text-gray-500">{desc}</div>
-      </div>
+      <span className="flex h-11 w-11 items-center justify-center rounded-md border border-zinc-800 bg-black/30 text-red-400 group-hover:border-red-800">
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-bold uppercase tracking-wide text-white">{title}</span>
+        <span className="block text-xs leading-5 text-zinc-500">{desc}</span>
+      </span>
     </Link>
-  );
-}
-
-function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-[10px] uppercase tracking-widest text-gray-500">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </div>
   );
 }

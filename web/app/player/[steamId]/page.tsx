@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { ExternalLink, Shield, Skull, Star, Trophy, Wallet } from "lucide-react";
 import { useParams } from "next/navigation";
+import { useCallback, useState } from "react";
+import { EmptyState, PageShell, Panel, StatCard } from "@/components/DashboardUi";
 import NavBar from "@/components/NavBar";
 import KillFeed from "@/components/KillFeed";
 import { formatPlaytime, prettyWeapon, relativeTime } from "@/lib/format";
+import { usePolling } from "@/lib/usePolling";
 
 type Totals = Record<string, number>;
 interface Weapon {
@@ -47,165 +50,144 @@ export default function PlayerPage() {
         setProfile(await res.json());
         setStatus("ok");
       }
-    } catch {}
+    } catch {
+      // Keep existing profile visible if a refresh fails.
+    }
   }, [steamId]);
 
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 10000);
-    return () => clearInterval(id);
-  }, [refresh]);
+  usePolling(refresh, 10000);
 
-  const t = profile?.[scope] ?? {};
-  const gathered = (t.wood ?? 0) + (t.stone ?? 0) + (t.metal_ore ?? 0) + (t.sulfur_ore ?? 0);
+  const totals = profile?.[scope] ?? {};
+  const gathered = (totals.wood ?? 0) + (totals.stone ?? 0) + (totals.metal_ore ?? 0) + (totals.sulfur_ore ?? 0);
+  const weapons = scope === "current" ? profile?.weaponsCurrent ?? [] : profile?.weaponsLifetime ?? [];
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-white flex flex-col">
+    <PageShell className="flex flex-col">
       <NavBar />
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-6">
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-4 py-6">
         {status === "notfound" && (
-          <div className="text-center py-20 text-gray-500">
-            Player not found. They may not have any tracked activity yet.
-          </div>
+          <Panel title="Player">
+            <EmptyState>Player not found. They may not have any tracked activity yet.</EmptyState>
+          </Panel>
         )}
 
         {status !== "notfound" && (
           <>
-            {/* Header */}
-            <section className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-6 flex items-center gap-4">
+            <section className="flex flex-col gap-4 rounded-lg border border-zinc-800 bg-zinc-950/75 p-5 md:flex-row md:items-center">
               {profile?.player?.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={profile.player.avatar_url} alt="" className="w-16 h-16 rounded-full" />
+                <img src={profile.player.avatar_url} alt="" className="h-20 w-20 rounded-lg border border-zinc-800" />
               ) : (
-                <div className="w-16 h-16 rounded-full bg-[#2a2a2a] flex items-center justify-center text-2xl text-gray-500">
+                <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-3xl font-black text-zinc-500">
                   {profile?.player?.display_name?.[0]?.toUpperCase() ?? "?"}
                 </div>
               )}
-              <div className="flex-1 min-w-0">
-                <h1 className="text-2xl font-bold truncate">
-                  {profile?.player?.display_name ?? "Loading…"}
+
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Player Profile</p>
+                <h1 className="truncate text-3xl font-black tracking-tight text-white">
+                  {profile?.player?.display_name ?? "Loading"}
                 </h1>
-                <div className="text-xs text-gray-500 mt-1 flex gap-3 flex-wrap items-center">
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
                   {profile?.player?.last_seen && <span>Last seen {relativeTime(profile.player.last_seen)}</span>}
                   {(profile?.player?.money ?? 0) > 0 && (
-                    <span className="text-emerald-400">💰 {(profile!.player!.money).toLocaleString()}</span>
+                    <span className="inline-flex items-center gap-1 text-emerald-300">
+                      <Wallet className="h-3.5 w-3.5" aria-hidden="true" />
+                      {profile!.player!.money.toLocaleString()}
+                    </span>
                   )}
                   {(profile?.player?.rp ?? 0) > 0 && (
-                    <span className="text-sky-400">⭐ {(profile!.player!.rp).toLocaleString()} RP</span>
+                    <span className="inline-flex items-center gap-1 text-sky-300">
+                      <Star className="h-3.5 w-3.5" aria-hidden="true" />
+                      {profile!.player!.rp.toLocaleString()} RP
+                    </span>
                   )}
                   <a
                     href={`https://steamcommunity.com/profiles/${steamId}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-gray-500 hover:text-white"
+                    className="inline-flex items-center gap-1 text-zinc-500 hover:text-white"
                   >
-                    Steam profile ↗
+                    Steam profile
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                   </a>
                 </div>
               </div>
 
-              {/* Scope toggle */}
-              <div className="flex items-center gap-1 bg-[#0f0f0f] rounded p-0.5 border border-[#2a2a2a]">
-                {(["current", "lifetime"] as Scope[]).map((s) => (
+              <div className="inline-flex w-fit items-center gap-1 rounded-lg border border-zinc-800 bg-black/25 p-1">
+                {(["current", "lifetime"] as Scope[]).map((item) => (
                   <button
-                    key={s}
-                    onClick={() => setScope(s)}
-                    className={`text-xs px-3 py-1.5 rounded transition-colors ${
-                      scope === s ? "bg-red-600 text-white" : "text-gray-400 hover:text-white"
+                    key={item}
+                    onClick={() => setScope(item)}
+                    className={`h-8 rounded-md px-3 text-xs font-semibold transition-colors ${
+                      scope === item ? "bg-red-600 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
                     }`}
                   >
-                    {s === "current" ? "Current Wipe" : "Lifetime"}
+                    {item === "current" ? "Current Wipe" : "Lifetime"}
                   </button>
                 ))}
               </div>
             </section>
 
-            {/* Stat grid (PvE-focused) */}
-            <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Stat label="Rating" value={t.rating ?? 0} accent="text-yellow-400" />
-              <Stat label="Boss Kills" value={t.boss_kills ?? 0} accent="text-red-500" />
-              <Stat label="Heli Kills" value={t.heli_kills ?? 0} accent="text-red-400" />
-              <Stat label="Bradley Kills" value={t.bradley_kills ?? 0} accent="text-orange-400" />
-              <Stat label="Animals" value={t.animal_kills ?? 0} accent="text-green-400" />
-              <Stat label="Scientists" value={t.scientist_kills ?? 0} accent="text-cyan-400" />
-              <Stat label="Other NPCs" value={t.npc_kills ?? 0} />
-              <Stat label="Gathered" value={gathered.toLocaleString()} />
-              <Stat label="Structures" value={(t.structures_placed ?? 0).toLocaleString()} />
-              <Stat label="Playtime" value={formatPlaytime(t.playtime ?? 0)} />
-              <Stat label="PvP Kills" value={t.kills ?? 0} />
-              <Stat label="Deaths" value={t.deaths ?? 0} />
-              <Stat label="Rocket/C4/Satchel" value={`${t.rockets_fired ?? 0}/${t.c4_thrown ?? 0}/${t.satchels ?? 0}`} />
+            <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatCard icon={Trophy} label="Rating" value={totals.rating ?? 0} accent="text-yellow-300" />
+              <StatCard icon={Skull} label="Boss Kills" value={totals.boss_kills ?? 0} accent="text-red-400" />
+              <StatCard label="Heli Kills" value={totals.heli_kills ?? 0} accent="text-red-300" />
+              <StatCard icon={Shield} label="Bradley" value={totals.bradley_kills ?? 0} accent="text-orange-300" />
+              <StatCard label="Animals" value={totals.animal_kills ?? 0} accent="text-emerald-300" />
+              <StatCard label="Scientists" value={totals.scientist_kills ?? 0} accent="text-cyan-300" />
+              <StatCard label="Other NPCs" value={totals.npc_kills ?? 0} />
+              <StatCard label="Gathered" value={gathered.toLocaleString()} />
+              <StatCard label="Structures" value={(totals.structures_placed ?? 0).toLocaleString()} />
+              <StatCard label="Playtime" value={formatPlaytime(totals.playtime ?? 0)} />
+              <StatCard label="PvP Kills" value={totals.kills ?? 0} />
+              <StatCard label="Deaths" value={totals.deaths ?? 0} />
             </section>
 
-            {/* Gathering breakdown */}
-            <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Stat label="Wood" value={(t.wood ?? 0).toLocaleString()} accent="text-amber-600" />
-              <Stat label="Stone" value={(t.stone ?? 0).toLocaleString()} accent="text-gray-300" />
-              <Stat label="Metal Ore" value={(t.metal_ore ?? 0).toLocaleString()} accent="text-blue-400" />
-              <Stat label="Sulfur Ore" value={(t.sulfur_ore ?? 0).toLocaleString()} accent="text-yellow-500" />
+            <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatCard label="Wood" value={(totals.wood ?? 0).toLocaleString()} accent="text-amber-600" />
+              <StatCard label="Stone" value={(totals.stone ?? 0).toLocaleString()} accent="text-zinc-300" />
+              <StatCard label="Metal Ore" value={(totals.metal_ore ?? 0).toLocaleString()} accent="text-sky-300" />
+              <StatCard label="Sulfur Ore" value={(totals.sulfur_ore ?? 0).toLocaleString()} accent="text-yellow-300" />
             </section>
 
-            {/* Weapons + kill history */}
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4">
-                <h2 className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
-                  Top Weapons
-                </h2>
-                <WeaponBars weapons={scope === "current" ? profile?.weaponsCurrent ?? [] : profile?.weaponsLifetime ?? []} />
-              </div>
+            <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Panel title="Top Weapons">
+                <WeaponBars weapons={weapons} />
+              </Panel>
 
-              <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4">
-                <h2 className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
-                  Recent Fights
-                </h2>
+              <Panel title="Recent Fights">
                 <KillFeed limit={30} scope={scope} steamId={steamId} emptyText="No fights recorded yet." />
-              </div>
+              </Panel>
             </section>
           </>
         )}
       </main>
-    </div>
+    </PageShell>
   );
 }
 
 function WeaponBars({ weapons }: { weapons: Weapon[] }) {
   if (weapons.length === 0) {
-    return <p className="text-gray-600 text-xs py-2">No weapon kills recorded yet.</p>;
+    return <p className="py-3 text-xs text-zinc-500">No weapon kills recorded yet.</p>;
   }
   const max = Math.max(...weapons.map((w) => w.kills));
   return (
-    <ul className="flex flex-col gap-2">
+    <ul className="flex flex-col gap-3">
       {weapons.map((w) => (
         <li key={w.weapon} className="text-xs">
-          <div className="flex justify-between mb-0.5">
-            <span className="text-gray-300">{prettyWeapon(w.weapon)}</span>
-            <span className="text-gray-500">{w.kills}</span>
+          <div className="mb-1 flex justify-between gap-3">
+            <span className="truncate font-semibold text-zinc-300">{prettyWeapon(w.weapon)}</span>
+            <span className="text-zinc-500">{w.kills}</span>
           </div>
-          <div className="h-1.5 bg-[#0f0f0f] rounded overflow-hidden">
+          <div className="h-1.5 overflow-hidden rounded bg-black/50">
             <div
-              className="h-full bg-red-600"
+              className="h-full rounded bg-red-600"
               style={{ width: `${Math.round((w.kills / max) * 100)}%` }}
             />
           </div>
         </li>
       ))}
     </ul>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string | number;
-  accent?: string;
-}) {
-  return (
-    <div className="bg-[#161616] border border-[#2a2a2a] rounded-lg p-3">
-      <div className="text-[10px] uppercase tracking-widest text-gray-500">{label}</div>
-      <div className={`text-lg font-bold mt-0.5 ${accent ?? ""}`}>{value}</div>
-    </div>
   );
 }

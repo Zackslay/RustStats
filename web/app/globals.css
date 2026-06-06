@@ -13,11 +13,17 @@
 body {
   background: #0f0f0f;
   color: #fff;
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Leaflet player marker ──────────────────────────────────────────── */
+button,
+a,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Leaflet player marker */
 .player-marker {
   width: 10px;
   height: 10px;
@@ -45,39 +51,59 @@ body {
 }
 .player-marker:hover .player-label { display: block; }
 
-/* ── Leaflet event marker ────────────────────────────────────────────── */
+/* Leaflet event marker */
 .event-marker {
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 999px;
+  background: rgba(10,10,10,0.9);
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.45), 0 8px 20px rgba(0,0,0,0.35);
   cursor: pointer;
 }
-.event-emoji { font-size: 22px; line-height: 1; }
+.event-glyph {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+}
 .event-label {
+  position: absolute;
+  top: 36px;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 9px;
   font-weight: 700;
   color: #fff;
   text-shadow: 0 0 4px #000;
-  background: rgba(0,0,0,0.6);
-  padding: 1px 4px;
+  background: rgba(0,0,0,0.78);
+  border: 1px solid rgba(255,255,255,0.12);
+  padding: 2px 5px;
   border-radius: 3px;
   white-space: nowrap;
 }
-.event-heli .event-emoji    { filter: drop-shadow(0 0 5px #ef4444); }
-.event-bradley .event-emoji { filter: drop-shadow(0 0 5px #f97316); }
-.event-cargo .event-emoji   { filter: drop-shadow(0 0 5px #60a5fa); }
-.event-chinook .event-emoji { filter: drop-shadow(0 0 5px #facc15); }
-.event-boss .event-emoji {
-  font-size: 28px;
-  filter: drop-shadow(0 0 8px #dc2626);
+.event-heli { border-color: rgba(239,68,68,0.75); box-shadow: 0 0 18px rgba(239,68,68,0.45); }
+.event-bradley { border-color: rgba(249,115,22,0.75); box-shadow: 0 0 18px rgba(249,115,22,0.45); }
+.event-cargo { border-color: rgba(96,165,250,0.75); box-shadow: 0 0 18px rgba(96,165,250,0.35); }
+.event-chinook { border-color: rgba(250,204,21,0.75); box-shadow: 0 0 18px rgba(250,204,21,0.35); }
+.event-boss {
+  width: 42px;
+  height: 42px;
+  border-color: rgba(220,38,38,0.95);
+  background: rgba(69,10,10,0.96);
+  box-shadow: 0 0 24px rgba(220,38,38,0.65);
   animation: bosspulse 1.2s ease-in-out infinite;
 }
 @keyframes bosspulse {
   0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.25); }
+  50% { transform: scale(1.15); }
 }
 
-/* ── Leaflet monument label ──────────────────────────────────────────── */
+/* Leaflet monument label */
 .monument-marker {
   display: flex;
   align-items: center;
@@ -98,20 +124,28 @@ body {
   font-weight: 700;
   color: #fde68a;
   text-shadow: 0 0 3px #000, 0 0 3px #000;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
-/* ── Leaflet death marker ────────────────────────────────────────────── */
+/* Leaflet death marker */
 .death-marker {
-  font-size: 12px;
-  line-height: 14px;
-  text-align: center;
-  filter: drop-shadow(0 0 2px #000);
-  opacity: 0.85;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(239,68,68,0.75);
+  border-radius: 999px;
+  background: rgba(127,29,29,0.85);
+  color: #fff;
   cursor: pointer;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  opacity: 0.85;
 }
 
-/* ── Leaflet grid ────────────────────────────────────────────────────── */
+/* Leaflet grid */
 .grid-label {
   font-size: 9px;
   font-weight: 600;
@@ -120,7 +154,7 @@ body {
   pointer-events: none;
 }
 
-/* ── Leaflet popup dark ──────────────────────────────────────────────── */
+/* Leaflet popup dark */
 .leaflet-popup-content-wrapper {
   background: #1a1a1a !important;
   color: #fff !important;

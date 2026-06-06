@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { usePolling } from "@/lib/usePolling";
 
 interface Point {
   ts: number;
@@ -19,25 +20,23 @@ export default function PopulationChart({ sinceSeconds = 86400 }: { sinceSeconds
         setPoints(data.points ?? []);
         setPeak(data.peak ?? 0);
       }
-    } catch {}
+    } catch {
+      // Preserve the most recent graph on transient failures.
+    }
   }, [sinceSeconds]);
 
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 60000);
-    return () => clearInterval(id);
-  }, [refresh]);
+  usePolling(refresh, 60000);
 
   if (points.length < 2) {
     return (
-      <p className="text-gray-600 text-xs px-1 py-6 text-center">
-        Collecting population data… check back soon.
+      <p className="px-1 py-6 text-center text-xs text-zinc-500">
+        Collecting population data. Check back soon.
       </p>
     );
   }
 
-  const W = 600;
-  const H = 120;
+  const width = 600;
+  const height = 120;
   const pad = 4;
   const tMin = points[0]?.ts ?? 0;
   const tMax = points[points.length - 1]?.ts ?? 1;
@@ -45,27 +44,27 @@ export default function PopulationChart({ sinceSeconds = 86400 }: { sinceSeconds
   const yMax = Math.max(1, peak);
 
   const xy = (p: Point) => {
-    const x = pad + ((p.ts - tMin) / tSpan) * (W - pad * 2);
-    const y = H - pad - (p.online / yMax) * (H - pad * 2);
+    const x = pad + ((p.ts - tMin) / tSpan) * (width - pad * 2);
+    const y = height - pad - (p.online / yMax) * (height - pad * 2);
     return [x, y] as const;
   };
 
   const line = points.map((p) => xy(p).join(",")).join(" ");
   const [lastX, lastY] = xy(points[points.length - 1]);
-  const area = `${pad},${H - pad} ${line} ${lastX},${H - pad}`;
+  const area = `${pad},${height - pad} ${line} ${lastX},${height - pad}`;
   const current = points[points.length - 1]?.online ?? 0;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2 text-xs">
-        <span className="text-gray-400">
-          Now: <span className="text-white font-semibold">{current}</span>
+      <div className="mb-2 flex items-center justify-between text-xs">
+        <span className="text-zinc-400">
+          Now: <span className="font-semibold text-white">{current}</span>
         </span>
-        <span className="text-gray-500">
-          Peak: <span className="text-emerald-400 font-semibold">{peak}</span>
+        <span className="text-zinc-500">
+          Peak: <span className="font-semibold text-emerald-300">{peak}</span>
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-28" preserveAspectRatio="none">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-28 w-full" preserveAspectRatio="none">
         <defs>
           <linearGradient id="popfill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#dc2626" stopOpacity="0.35" />
@@ -83,7 +82,7 @@ export default function PopulationChart({ sinceSeconds = 86400 }: { sinceSeconds
         />
         <circle cx={lastX} cy={lastY} r="2.5" fill="#ef4444" />
       </svg>
-      <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+      <div className="mt-1 flex justify-between text-[10px] text-zinc-600">
         <span>{fmt(tMin)}</span>
         <span>{fmt(tMax)}</span>
       </div>

@@ -6,6 +6,7 @@ import {
   type ActiveEvent,
   type PlayerPosition,
 } from "@/lib/gameState";
+import { verifyPluginSecret } from "@/lib/pluginAuth";
 import {
   getCurrentWipeId,
   startNewWipe,
@@ -18,12 +19,9 @@ import {
   updateBalances,
 } from "@/lib/db";
 
-const PLUGIN_SECRET = process.env.PLUGIN_SECRET ?? "changeme";
-
 export async function POST(req: NextRequest) {
-  if (req.headers.get("x-plugin-secret") !== PLUGIN_SECRET) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = verifyPluginSecret(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await req.json();
 

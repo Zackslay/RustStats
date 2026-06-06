@@ -1,7 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  Bomb,
+  Building2,
+  Crosshair,
+  Hammer,
+  Leaf,
+  Search,
+  Shield,
+  Skull,
+  Trophy,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
+import { useCallback, useState } from "react";
+import { EmptyState, PageShell, Panel } from "@/components/DashboardUi";
+import NavBar from "@/components/NavBar";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
+import { usePolling } from "@/lib/usePolling";
 
 interface PlayerRow {
   rank: number;
@@ -20,8 +36,6 @@ interface PlayerRow {
   c4_thrown: number;
   satchels: number;
   npc_kills: number;
-  heli_hits: number;
-  bradley_hits: number;
   scientist_kills: number;
   animal_kills: number;
   heli_kills: number;
@@ -34,29 +48,30 @@ interface PlayerRow {
 type Category = "overall" | "boss" | "npc" | "hunting" | "events" | "gathering" | "building" | "explosives";
 type WipeScope = "current" | "lifetime";
 
-const CATEGORIES: { id: Category; label: string; icon: string }[] = [
-  { id: "overall", label: "Overall", icon: "🏆" },
-  { id: "boss", label: "Boss Slayers", icon: "💀" },
-  { id: "npc", label: "Scientists & NPCs", icon: "☣️" },
-  { id: "hunting", label: "Hunting", icon: "🏹" },
-  { id: "events", label: "Heli / Bradley", icon: "🚁" },
-  { id: "gathering", label: "Gathering", icon: "⛏️" },
-  { id: "building", label: "Building", icon: "🏗️" },
-  { id: "explosives", label: "Explosives", icon: "💣" },
+const CATEGORIES: { id: Category; label: string; icon: LucideIcon }[] = [
+  { id: "overall", label: "Overall", icon: Trophy },
+  { id: "boss", label: "Boss Slayers", icon: Skull },
+  { id: "npc", label: "Scientists", icon: Crosshair },
+  { id: "hunting", label: "Hunting", icon: Leaf },
+  { id: "events", label: "Heli / Bradley", icon: Shield },
+  { id: "gathering", label: "Gathering", icon: Hammer },
+  { id: "building", label: "Building", icon: Building2 },
+  { id: "explosives", label: "Explosives", icon: Bomb },
 ];
 
 export default function LeaderboardPage() {
   const [category, setCategory] = useState<Category>("overall");
   const [wipeScope, setWipeScope] = useState<WipeScope>("current");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search.trim(), 350);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchLeaderboard = useCallback(async () => {
-    setLoading(true);
+    setLoading((wasLoading) => wasLoading || players.length === 0);
     try {
       const params = new URLSearchParams({ category, wipe: wipeScope });
-      if (search) params.set("search", search);
+      if (debouncedSearch) params.set("search", debouncedSearch);
       const res = await fetch(`/api/leaderboard?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -65,288 +80,269 @@ export default function LeaderboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [category, wipeScope, search]);
+  }, [category, wipeScope, debouncedSearch, players.length]);
 
-  useEffect(() => {
-    fetchLeaderboard();
-    const id = setInterval(fetchLeaderboard, 15000);
-    return () => clearInterval(id);
-  }, [fetchLeaderboard]);
-
-  function totalGathered(row: PlayerRow) {
-    return (row.wood + row.stone + row.metal_ore + row.sulfur_ore).toLocaleString();
-  }
-
-  function formatTime(seconds: number) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    return `${h}h ${m}m`;
-  }
+  usePolling(fetchLeaderboard, 15000);
 
   const top3 = players.slice(0, 3);
-  const rest = players.slice(3);
+  const activeCategory = CATEGORIES.find((c) => c.id === category) ?? CATEGORIES[0];
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-white">
-      {/* Header */}
-      <header className="px-6 py-4 bg-[#161616] border-b border-[#2a2a2a] flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-red-500 font-bold text-xl tracking-tight">
-            RUST<span className="text-white">STATS</span>
-          </span>
-          <span className="text-gray-600">|</span>
-          <a href="/map" className="text-xs text-gray-400 hover:text-white transition-colors">
-            Live Map →
-          </a>
-        </div>
-
-        {/* Wipe scope toggle */}
-        <div className="flex items-center gap-1 bg-[#0f0f0f] rounded p-0.5 border border-[#2a2a2a]">
-          {(["current", "lifetime"] as WipeScope[]).map((w) => (
-            <button
-              key={w}
-              onClick={() => setWipeScope(w)}
-              className={`text-xs px-3 py-1.5 rounded transition-colors ${
-                wipeScope === w
-                  ? "bg-red-600 text-white"
-                  : "text-gray-400 hover:text-white"
-              }`}
-            >
-              {w === "current" ? "Current Wipe" : "Lifetime"}
-            </button>
-          ))}
-        </div>
-      </header>
-
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-        {/* Top 3 podium */}
-        {top3.length > 0 && (
-          <div className="grid grid-cols-3 gap-3">
-            {[top3[1], top3[0], top3[2]].map((p, i) => {
-              if (!p) return <div key={i} />;
-              const place = i === 0 ? 2 : i === 1 ? 1 : 3;
-              const heights = ["h-24", "h-32", "h-20"];
-              const colors = [
-                "border-gray-400 text-gray-300",
-                "border-yellow-400 text-yellow-300",
-                "border-orange-500 text-orange-400",
-              ];
-              return (
-                <div
-                  key={p.steam_id}
-                  className={`flex flex-col items-center justify-end bg-[#161616] border rounded-lg p-4 ${colors[i]} ${heights[i]}`}
-                >
-                  <div className="text-2xl font-bold">#{place}</div>
-                  <div className="text-sm font-semibold truncate max-w-full">
-                    {p.display_name}
-                  </div>
-                  <div className="text-xs opacity-70">{p.rating} pts</div>
-                </div>
-              );
-            })}
+    <PageShell>
+      <NavBar />
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-6">
+        <section className="flex flex-col gap-4 rounded-lg border border-zinc-800 bg-zinc-950/75 p-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-red-900/70 bg-red-950/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-red-300">
+              <activeCategory.icon className="h-3.5 w-3.5" aria-hidden="true" />
+              {activeCategory.label}
+            </div>
+            <h1 className="text-3xl font-black tracking-tight text-white">Leaderboard</h1>
+            <p className="mt-1 text-sm text-zinc-500">Current wipe and lifetime PvE performance across tracked server stats.</p>
           </div>
+
+          <div className="inline-flex w-fit items-center gap-1 rounded-lg border border-zinc-800 bg-black/25 p-1">
+            {(["current", "lifetime"] as WipeScope[]).map((scope) => (
+              <button
+                key={scope}
+                onClick={() => setWipeScope(scope)}
+                className={`h-8 rounded-md px-3 text-xs font-semibold transition-colors ${
+                  wipeScope === scope ? "bg-red-600 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                }`}
+              >
+                {scope === "current" ? "Current Wipe" : "Lifetime"}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {top3.length > 0 && (
+          <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {[top3[1], top3[0], top3[2]].map((p, index) => {
+              if (!p) return <div key={index} />;
+              const place = index === 0 ? 2 : index === 1 ? 1 : 3;
+              return <PodiumPlayer key={p.steam_id} player={p} place={place} featured={place === 1} />;
+            })}
+          </section>
         )}
 
-        {/* Category tabs */}
-        <div className="flex gap-1 flex-wrap">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setCategory(c.id)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border transition-colors ${
-                category === c.id
-                  ? "bg-red-600 border-red-500 text-white"
-                  : "border-[#2a2a2a] text-gray-400 hover:text-white hover:border-[#444]"
-              }`}
-            >
-              <span>{c.icon}</span>
-              {c.label}
-            </button>
-          ))}
+        <Panel
+          title="Filters"
+          action={
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" aria-hidden="true" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search player"
+                className="h-9 w-48 rounded-md border border-zinc-800 bg-black/30 pl-8 pr-3 text-xs text-white outline-none placeholder:text-zinc-600 focus:border-zinc-600"
+              />
+            </div>
+          }
+        >
+          <div className="flex flex-wrap gap-2">
+            {CATEGORIES.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setCategory(c.id)}
+                className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
+                  category === c.id
+                    ? "border-red-600 bg-red-600 text-white"
+                    : "border-zinc-800 bg-black/20 text-zinc-400 hover:border-zinc-600 hover:text-white"
+                }`}
+              >
+                <c.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </Panel>
 
-          {/* Search */}
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search player..."
-            className="ml-auto text-xs px-3 py-1.5 bg-[#161616] border border-[#2a2a2a] rounded text-white placeholder:text-gray-600 focus:outline-none focus:border-[#444] w-48"
-          />
-        </div>
-
-        {/* Table */}
-        <div className="bg-[#161616] border border-[#2a2a2a] rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#2a2a2a] text-[10px] uppercase tracking-widest text-gray-500">
-                <th className="px-4 py-3 text-left w-10">#</th>
-                <th className="px-4 py-3 text-left">Player</th>
-                <th className="px-4 py-3 text-right">Time</th>
-                {category === "overall" && (
-                  <>
-                    <th className="px-4 py-3 text-right">Boss</th>
-                    <th className="px-4 py-3 text-right">Animals</th>
-                    <th className="px-4 py-3 text-right">Heli</th>
-                    <th className="px-4 py-3 text-right">Bradley</th>
-                    <th className="px-4 py-3 text-right text-yellow-500">Rating</th>
-                  </>
-                )}
-                {category === "boss" && (
-                  <th className="px-4 py-3 text-right">Boss Kills</th>
-                )}
-                {category === "npc" && (
-                  <>
-                    <th className="px-4 py-3 text-right">Scientists</th>
-                    <th className="px-4 py-3 text-right">Other NPCs</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                  </>
-                )}
-                {category === "hunting" && (
-                  <th className="px-4 py-3 text-right">Animals Killed</th>
-                )}
-                {category === "events" && (
-                  <>
-                    <th className="px-4 py-3 text-right">Heli Kills</th>
-                    <th className="px-4 py-3 text-right">Bradley Kills</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                  </>
-                )}
-                {category === "gathering" && (
-                  <>
-                    <th className="px-4 py-3 text-right">Wood</th>
-                    <th className="px-4 py-3 text-right">Stone</th>
-                    <th className="px-4 py-3 text-right">Metal</th>
-                    <th className="px-4 py-3 text-right">Sulfur</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                  </>
-                )}
-                {category === "building" && (
-                  <th className="px-4 py-3 text-right">Structures</th>
-                )}
-                {category === "explosives" && (
-                  <>
-                    <th className="px-4 py-3 text-right">Rockets</th>
-                    <th className="px-4 py-3 text-right">C4</th>
-                    <th className="px-4 py-3 text-right">Satchels</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
-                    Loading...
-                  </td>
+        <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  <th className="w-12 px-4 py-3 text-left">#</th>
+                  <th className="px-4 py-3 text-left">Player</th>
+                  <th className="px-4 py-3 text-right">Time</th>
+                  {renderHeaders(category)}
                 </tr>
-              )}
-              {!loading && players.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
-                    No data yet — connect your Oxide plugin to start tracking.
-                  </td>
-                </tr>
-              )}
-              {[...top3, ...rest].map((p, idx) => (
-                <tr
-                  key={p.steam_id}
-                  className={`border-b border-[#1e1e1e] last:border-0 hover:bg-[#1a1a1a] transition-colors ${
-                    idx < 3 ? "bg-[#191919]" : ""
-                  }`}
-                >
-                  <td className="px-4 py-3 text-gray-500">
-                    {p.rank <= 3 ? (
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-10 text-center text-zinc-500">
+                      Loading leaderboard...
+                    </td>
+                  </tr>
+                )}
+                {!loading && players.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-10">
+                      <EmptyState>No data yet. Connect your Oxide plugin to start tracking.</EmptyState>
+                    </td>
+                  </tr>
+                )}
+                {!loading && players.map((p) => (
+                  <tr key={p.steam_id} className="border-b border-zinc-900 last:border-0 hover:bg-zinc-900/60">
+                    <td className="px-4 py-3 text-zinc-500">
                       <span className={rankColor(p.rank)}>#{p.rank}</span>
-                    ) : (
-                      `#${p.rank}`
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {p.avatar_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={p.avatar_url}
-                          alt=""
-                          className="w-6 h-6 rounded-full"
-                        />
-                      ) : (
-                        <div className="w-6 h-6 rounded-full bg-[#2a2a2a] flex items-center justify-center text-[10px] text-gray-500">
-                          {p.display_name[0]?.toUpperCase()}
-                        </div>
-                      )}
-                      <Link href={`/player/${p.steam_id}`} className="font-medium hover:underline hover:text-red-400 transition-colors">
-                        {p.display_name}
-                      </Link>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-400 text-xs">
-                    {formatTime(p.playtime)}
-                  </td>
-
-                  {category === "overall" && (
-                    <>
-                      <td className="px-4 py-3 text-right text-red-500 font-medium">{p.boss_kills}</td>
-                      <td className="px-4 py-3 text-right text-green-400">{p.animal_kills}</td>
-                      <td className="px-4 py-3 text-right text-red-400">{p.heli_kills}</td>
-                      <td className="px-4 py-3 text-right text-orange-400">{p.bradley_kills}</td>
-                      <td className="px-4 py-3 text-right font-bold text-yellow-400">{p.rating}</td>
-                    </>
-                  )}
-                  {category === "boss" && (
-                    <td className="px-4 py-3 text-right font-bold text-red-500">{p.boss_kills}</td>
-                  )}
-                  {category === "npc" && (
-                    <>
-                      <td className="px-4 py-3 text-right text-cyan-400">{p.scientist_kills}</td>
-                      <td className="px-4 py-3 text-right">{p.npc_kills}</td>
-                      <td className="px-4 py-3 text-right font-medium">{p.scientist_kills + p.npc_kills}</td>
-                    </>
-                  )}
-                  {category === "hunting" && (
-                    <td className="px-4 py-3 text-right font-medium text-green-400">{p.animal_kills}</td>
-                  )}
-                  {category === "events" && (
-                    <>
-                      <td className="px-4 py-3 text-right text-red-400">{p.heli_kills}</td>
-                      <td className="px-4 py-3 text-right text-orange-400">{p.bradley_kills}</td>
-                      <td className="px-4 py-3 text-right font-medium">{p.heli_kills + p.bradley_kills}</td>
-                    </>
-                  )}
-                  {category === "gathering" && (
-                    <>
-                      <td className="px-4 py-3 text-right text-amber-700">{p.wood.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right text-gray-300">{p.stone.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right text-blue-400">{p.metal_ore.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right text-yellow-500">{p.sulfur_ore.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right font-medium">{totalGathered(p)}</td>
-                    </>
-                  )}
-                  {category === "building" && (
-                    <td className="px-4 py-3 text-right font-medium">{p.structures_placed.toLocaleString()}</td>
-                  )}
-                  {category === "explosives" && (
-                    <>
-                      <td className="px-4 py-3 text-right">{p.rockets_fired}</td>
-                      <td className="px-4 py-3 text-right text-red-400">{p.c4_thrown}</td>
-                      <td className="px-4 py-3 text-right text-orange-400">{p.satchels}</td>
-                      <td className="px-4 py-3 text-right font-medium">{p.rockets_fired + p.c4_thrown + p.satchels}</td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        {p.avatar_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.avatar_url} alt="" className="h-7 w-7 rounded-full border border-zinc-800" />
+                        ) : (
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-[10px] font-bold text-zinc-500">
+                            {p.display_name[0]?.toUpperCase()}
+                          </div>
+                        )}
+                        <Link href={`/player/${p.steam_id}`} className="max-w-[220px] truncate font-semibold text-zinc-200 hover:text-white">
+                          {p.display_name}
+                        </Link>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs text-zinc-500">{formatTime(p.playtime)}</td>
+                    {renderCells(category, p)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </PageShell>
   );
 }
 
+function PodiumPlayer({ player, place, featured }: { player: PlayerRow; place: number; featured: boolean }) {
+  return (
+    <Link
+      href={`/player/${player.steam_id}`}
+      className={`flex items-center gap-3 rounded-lg border p-4 transition-colors hover:bg-zinc-950 ${
+        featured ? "border-yellow-500/60 bg-yellow-500/10" : "border-zinc-800 bg-zinc-950/70"
+      }`}
+    >
+      <div className={`flex h-11 w-11 items-center justify-center rounded-md text-lg font-black ${
+        featured ? "bg-yellow-400 text-black" : "bg-zinc-900 text-zinc-300"
+      }`}>
+        #{place}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-bold text-white">{player.display_name}</p>
+        <p className="text-xs text-zinc-500">{player.rating} rating</p>
+      </div>
+    </Link>
+  );
+}
+
+function renderHeaders(category: Category) {
+  if (category === "overall") return (
+    <>
+      <th className="px-4 py-3 text-right">Boss</th>
+      <th className="px-4 py-3 text-right">Animals</th>
+      <th className="px-4 py-3 text-right">Heli</th>
+      <th className="px-4 py-3 text-right">Bradley</th>
+      <th className="px-4 py-3 text-right text-yellow-400">Rating</th>
+    </>
+  );
+  if (category === "boss") return <th className="px-4 py-3 text-right">Boss Kills</th>;
+  if (category === "npc") return (
+    <>
+      <th className="px-4 py-3 text-right">Scientists</th>
+      <th className="px-4 py-3 text-right">Other NPCs</th>
+      <th className="px-4 py-3 text-right">Total</th>
+    </>
+  );
+  if (category === "hunting") return <th className="px-4 py-3 text-right">Animals</th>;
+  if (category === "events") return (
+    <>
+      <th className="px-4 py-3 text-right">Heli</th>
+      <th className="px-4 py-3 text-right">Bradley</th>
+      <th className="px-4 py-3 text-right">Total</th>
+    </>
+  );
+  if (category === "gathering") return (
+    <>
+      <th className="px-4 py-3 text-right">Wood</th>
+      <th className="px-4 py-3 text-right">Stone</th>
+      <th className="px-4 py-3 text-right">Metal</th>
+      <th className="px-4 py-3 text-right">Sulfur</th>
+      <th className="px-4 py-3 text-right">Total</th>
+    </>
+  );
+  if (category === "building") return <th className="px-4 py-3 text-right">Structures</th>;
+  return (
+    <>
+      <th className="px-4 py-3 text-right">Rockets</th>
+      <th className="px-4 py-3 text-right">C4</th>
+      <th className="px-4 py-3 text-right">Satchels</th>
+      <th className="px-4 py-3 text-right">Total</th>
+    </>
+  );
+}
+
+function renderCells(category: Category, p: PlayerRow) {
+  if (category === "overall") return (
+    <>
+      <td className="px-4 py-3 text-right font-semibold text-red-400">{p.boss_kills}</td>
+      <td className="px-4 py-3 text-right text-emerald-300">{p.animal_kills}</td>
+      <td className="px-4 py-3 text-right text-red-300">{p.heli_kills}</td>
+      <td className="px-4 py-3 text-right text-orange-300">{p.bradley_kills}</td>
+      <td className="px-4 py-3 text-right font-bold text-yellow-300">{p.rating}</td>
+    </>
+  );
+  if (category === "boss") return <td className="px-4 py-3 text-right font-bold text-red-400">{p.boss_kills}</td>;
+  if (category === "npc") return (
+    <>
+      <td className="px-4 py-3 text-right text-cyan-300">{p.scientist_kills}</td>
+      <td className="px-4 py-3 text-right">{p.npc_kills}</td>
+      <td className="px-4 py-3 text-right font-semibold">{p.scientist_kills + p.npc_kills}</td>
+    </>
+  );
+  if (category === "hunting") return <td className="px-4 py-3 text-right font-semibold text-emerald-300">{p.animal_kills}</td>;
+  if (category === "events") return (
+    <>
+      <td className="px-4 py-3 text-right text-red-300">{p.heli_kills}</td>
+      <td className="px-4 py-3 text-right text-orange-300">{p.bradley_kills}</td>
+      <td className="px-4 py-3 text-right font-semibold">{p.heli_kills + p.bradley_kills}</td>
+    </>
+  );
+  if (category === "gathering") {
+    const total = p.wood + p.stone + p.metal_ore + p.sulfur_ore;
+    return (
+      <>
+        <td className="px-4 py-3 text-right text-amber-600">{p.wood.toLocaleString()}</td>
+        <td className="px-4 py-3 text-right text-zinc-300">{p.stone.toLocaleString()}</td>
+        <td className="px-4 py-3 text-right text-sky-300">{p.metal_ore.toLocaleString()}</td>
+        <td className="px-4 py-3 text-right text-yellow-300">{p.sulfur_ore.toLocaleString()}</td>
+        <td className="px-4 py-3 text-right font-semibold">{total.toLocaleString()}</td>
+      </>
+    );
+  }
+  if (category === "building") return <td className="px-4 py-3 text-right font-semibold">{p.structures_placed.toLocaleString()}</td>;
+  return (
+    <>
+      <td className="px-4 py-3 text-right">{p.rockets_fired}</td>
+      <td className="px-4 py-3 text-right text-red-300">{p.c4_thrown}</td>
+      <td className="px-4 py-3 text-right text-orange-300">{p.satchels}</td>
+      <td className="px-4 py-3 text-right font-semibold">{p.rockets_fired + p.c4_thrown + p.satchels}</td>
+    </>
+  );
+}
+
+function formatTime(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
 function rankColor(rank: number) {
-  if (rank === 1) return "text-yellow-400 font-bold";
-  if (rank === 2) return "text-gray-300 font-bold";
-  if (rank === 3) return "text-orange-500 font-bold";
+  if (rank === 1) return "font-bold text-yellow-300";
+  if (rank === 2) return "font-bold text-zinc-300";
+  if (rank === 3) return "font-bold text-orange-300";
   return "";
 }

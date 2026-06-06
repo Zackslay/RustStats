@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setCurrentMapImage } from "@/lib/db";
-
-const PLUGIN_SECRET = process.env.PLUGIN_SECRET ?? "changeme";
+import { verifyPluginSecret } from "@/lib/pluginAuth";
 
 export async function POST(req: NextRequest) {
-  if (req.headers.get("x-plugin-secret") !== PLUGIN_SECRET) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = verifyPluginSecret(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   let mapImage: unknown;
   try {

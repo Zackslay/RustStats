@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Crosshair, Swords } from "lucide-react";
 import Link from "next/link";
+import { useCallback, useState } from "react";
 import { prettyWeapon, relativeTime } from "@/lib/format";
+import { usePolling } from "@/lib/usePolling";
 
 interface KillRow {
   id: number;
@@ -18,7 +20,7 @@ interface KillRow {
 interface Props {
   limit?: number;
   scope?: "current" | "lifetime";
-  steamId?: string; // filter to a single player's kills/deaths
+  steamId?: string;
   refreshMs?: number;
   emptyText?: string;
 }
@@ -47,28 +49,28 @@ export default function KillFeed({
     }
   }, [limit, scope, steamId]);
 
-  useEffect(() => {
-    fetchKills();
-    const id = setInterval(fetchKills, refreshMs);
-    return () => clearInterval(id);
-  }, [fetchKills, refreshMs]);
+  usePolling(fetchKills, refreshMs);
 
   if (loaded && kills.length === 0) {
-    return <p className="text-gray-600 text-xs px-1 py-2">{emptyText}</p>;
+    return <p className="px-1 py-3 text-xs text-zinc-500">{emptyText}</p>;
   }
 
   return (
-    <ul className="flex flex-col divide-y divide-[#1e1e1e]">
-      {kills.map((k) => (
-        <li key={k.id} className="flex items-center gap-1.5 py-1.5 text-xs">
-          <PlayerName id={k.killer_id} name={k.killer_name} className="text-emerald-400" />
-          <span className="text-gray-500 shrink-0">
-            {k.headshot ? "🎯" : "🔫"} {prettyWeapon(k.weapon)}
-          </span>
-          <PlayerName id={k.victim_id} name={k.victim_name} className="text-red-400" />
-          <span className="ml-auto text-gray-600 shrink-0">{relativeTime(k.ts)}</span>
-        </li>
-      ))}
+    <ul className="flex flex-col divide-y divide-zinc-900">
+      {kills.map((k) => {
+        const WeaponIcon = k.headshot ? Crosshair : Swords;
+        return (
+          <li key={k.id} className="flex items-center gap-2 py-2 text-xs">
+            <PlayerName id={k.killer_id} name={k.killer_name} className="text-emerald-300" />
+            <span className="inline-flex min-w-0 shrink-0 items-center gap-1 text-zinc-500">
+              <WeaponIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden max-w-[110px] truncate sm:inline">{prettyWeapon(k.weapon)}</span>
+            </span>
+            <PlayerName id={k.victim_id} name={k.victim_name} className="text-red-300" />
+            <span className="ml-auto shrink-0 text-zinc-600">{relativeTime(k.ts)}</span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -82,12 +84,12 @@ function PlayerName({
   name: string | null;
   className: string;
 }) {
-  const label = name ?? "—";
-  if (!id) return <span className={`${className} truncate max-w-[90px]`}>{label}</span>;
+  const label = name ?? "-";
+  if (!id) return <span className={`${className} max-w-[90px] truncate font-semibold`}>{label}</span>;
   return (
     <Link
       href={`/player/${id}`}
-      className={`${className} truncate max-w-[90px] hover:underline`}
+      className={`${className} max-w-[90px] truncate font-semibold hover:text-white`}
       title={label}
     >
       {label}

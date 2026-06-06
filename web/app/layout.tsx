@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 const BRAND = process.env.NEXT_PUBLIC_BRAND || "RustStats";
 
 export const metadata: Metadata = {
-  title: `${BRAND} — Live Server Dashboard`,
+  title: `${BRAND} - Live Server Dashboard`,
   description: `Live map, leaderboards, boss events, and stats for ${BRAND}`,
 };
 
@@ -29,7 +29,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full">{children}</body>
     </html>
   );
 }

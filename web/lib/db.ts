@@ -631,6 +631,56 @@ export async function recordKills(
   }
 }
 
+// ── Activity heatmap (sampled player positions, grid-bucketed) ────────────────
+const HEAT_CELL = 75; // world units per bucket
+let lastHeatWrite = 0;
+let heatTableEnsured = false;
+
+export async function recordHeatSamples(
+  wipeId: number,
+  points: { x: number; z: number }[]
+): Promise<void> {
+  if (points.length === 0) return;
+  const now = Date.now();
+  if (now - lastHeatWrite < 60_000) return; // throttle per serverless instance
+  lastHeatWrite = now;
+  if (!heatTableEnsured) {
+    await exec(
+      `CREATE TABLE IF NOT EXISTS heat_grid (
+         wipe_id INTEGER NOT NULL, gx INTEGER NOT NULL, gz INTEGER NOT NULL,
+         cnt INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (wipe_id, gx, gz))`
+    );
+    heatTableEnsured = true;
+  }
+  for (const p of points) {
+    const gx = Math.floor(p.x / HEAT_CELL);
+    const gz = Math.floor(p.z / HEAT_CELL);
+    await exec(
+      `INSERT INTO heat_grid (wipe_id, gx, gz, cnt) VALUES ($1, $2, $3, 1)
+       ON CONFLICT (wipe_id, gx, gz) DO UPDATE SET cnt = heat_grid.cnt + 1`,
+      [wipeId, gx, gz]
+    );
+  }
+}
+
+export async function queryActivityHeat(
+  wipeId: number
+): Promise<{ x: number; z: number; w: number }[]> {
+  try {
+    const rows = await query<{ gx: number; gz: number; cnt: number }>(
+      `SELECT gx, gz, cnt FROM heat_grid WHERE wipe_id = $1`,
+      [wipeId]
+    );
+    return rows.map((r) => ({
+      x: r.gx * HEAT_CELL + HEAT_CELL / 2,
+      z: r.gz * HEAT_CELL + HEAT_CELL / 2,
+      w: Number(r.cnt),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ── Heatmap points ────────────────────────────────────────────────────────────
 export async function queryDeathPoints(
   wipeId: number | undefined,

@@ -13,7 +13,7 @@ interface Props {
   offX?: number;
   offZ?: number;
   deaths?: DeathMarker[];
-  heat?: { x: number; z: number }[];
+  heat?: { x: number; z: number; w?: number }[];
   calibrating?: boolean;
   onCalibrate?: (latNorm: number, lngNorm: number) => void;
   focusTarget?: { x: number; z: number; key: string } | null;
@@ -298,7 +298,7 @@ export default function LiveMap({
       const gx = Math.min(N - 1, Math.max(0, Math.floor((p.x + half) / cell)));
       const gz = Math.min(N - 1, Math.max(0, Math.floor((p.z + half) / cell)));
       const k = `${gx},${gz}`;
-      const v = (counts.get(k) ?? 0) + 1;
+      const v = (counts.get(k) ?? 0) + (p.w ?? 1);
       counts.set(k, v);
       if (v > max) max = v;
     }

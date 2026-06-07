@@ -37,8 +37,8 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
   const [deaths, setDeaths] = useState<DeathMarker[]>([]);
   const [showDeaths, setShowDeaths] = useState(true);
-  const [heat, setHeat] = useState<{ x: number; z: number }[]>([]);
-  const [showHeat, setShowHeat] = useState(false);
+  const [heat, setHeat] = useState<{ x: number; z: number; w?: number }[]>([]);
+  const [heatMode, setHeatMode] = useState<"off" | "deaths" | "activity">("off");
   const [showTools, setShowTools] = useState(false);
   const [showPlayers, setShowPlayers] = useState(true);
   const [showKills, setShowKills] = useState(false);
@@ -180,8 +180,9 @@ export default function MapPage() {
   }, []);
 
   const fetchHeat = useCallback(async () => {
+    if (heatMode === "off") return;
     try {
-      const res = await fetch("/api/heatmap?wipe=current&limit=5000");
+      const res = await fetch(`/api/heatmap?type=${heatMode}&wipe=current&limit=5000`);
       if (res.ok) {
         const data = await res.json();
         setHeat(data.points ?? []);
@@ -189,7 +190,7 @@ export default function MapPage() {
     } catch {
       // Keep previous heat visible through transient failures.
     }
-  }, []);
+  }, [heatMode]);
 
   const tickClock = useCallback(() => {
     setNowSec(Math.floor(Date.now() / 1000));
@@ -197,7 +198,7 @@ export default function MapPage() {
 
   usePolling(fetchState, POLL_INTERVAL);
   usePolling(fetchDeaths, showDeaths ? 60000 : 0);
-  usePolling(fetchHeat, showHeat ? 60000 : 0);
+  usePolling(fetchHeat, heatMode !== "off" ? 60000 : 0);
   usePolling(tickClock, 1000);
 
   const rawMapUrl = state.server?.mapUrl ?? "";
@@ -300,7 +301,7 @@ export default function MapPage() {
             offX={offX}
             offZ={offZ}
             deaths={showDeaths ? deaths : []}
-            heat={showHeat ? heat : []}
+            heat={heatMode !== "off" ? heat : []}
             calibrating={calibrating}
             onCalibrate={onCalibrate}
             focusTarget={focusTarget}
@@ -318,14 +319,24 @@ export default function MapPage() {
               Deaths
             </button>
             <button
-              onClick={() => setShowHeat((v) => !v)}
+              onClick={() => { setHeat([]); setHeatMode((m) => (m === "deaths" ? "off" : "deaths")); }}
               className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-semibold ${
-                showHeat ? "border-orange-500 bg-orange-500 text-white" : "border-zinc-700 bg-black/75 text-zinc-300 hover:text-white"
+                heatMode === "deaths" ? "border-orange-500 bg-orange-500 text-white" : "border-zinc-700 bg-black/75 text-zinc-300 hover:text-white"
               }`}
-              title="Toggle a death heatmap for this wipe"
+              title="Death heatmap for this wipe"
             >
               <Flame className="h-3.5 w-3.5" aria-hidden="true" />
-              Heatmap
+              Deaths Heat
+            </button>
+            <button
+              onClick={() => { setHeat([]); setHeatMode((m) => (m === "activity" ? "off" : "activity")); }}
+              className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-semibold ${
+                heatMode === "activity" ? "border-cyan-500 bg-cyan-500 text-white" : "border-zinc-700 bg-black/75 text-zinc-300 hover:text-white"
+              }`}
+              title="Where players spend time (this wipe)"
+            >
+              <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+              Activity
             </button>
             <button
               onClick={() => setShowTools((v) => !v)}

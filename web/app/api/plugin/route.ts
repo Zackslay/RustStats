@@ -17,6 +17,7 @@ import {
   recordKills,
   recordPopulationSample,
   updateBalances,
+  recordHeatSamples,
 } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
@@ -82,6 +83,11 @@ export async function POST(req: NextRequest) {
     // A bare players push (e.g. OnPlayerConnected) just merges one in.
     if (body.server) {
       await updateGameState({ players: positions });
+      // Sample online positions into the activity heatmap (throttled to ~60s).
+      await recordHeatSamples(
+        activeWipeId,
+        Object.values(positions).filter((p) => p.online).map((p) => ({ x: p.x, z: p.z }))
+      );
     } else {
       await mergePlayers(positions);
     }

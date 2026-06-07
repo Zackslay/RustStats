@@ -91,6 +91,11 @@ export default function PlayerPage() {
                   {profile?.player?.display_name ?? "Loading"}
                 </h1>
                 <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
+                  {profile?.player?.first_seen ? (
+                    <span title={new Date(profile.player.first_seen * 1000).toLocaleString()}>
+                      Joined {new Date(profile.player.first_seen * 1000).toLocaleDateString()}
+                    </span>
+                  ) : null}
                   {profile?.player?.last_seen && <span>Last seen {relativeTime(profile.player.last_seen)}</span>}
                   {(profile?.player?.money ?? 0) > 0 && (
                     <span className="inline-flex items-center gap-1 text-emerald-300">

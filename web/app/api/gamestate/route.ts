@@ -17,12 +17,21 @@ export async function GET() {
 
   const [state, wipeRes] = await Promise.all([
     getGameState(),
-    pool.query(`SELECT * FROM wipes WHERE is_current = TRUE LIMIT 1`),
+    // NOT SELECT * — the wipes row holds the ~500KB base64 map_image, which
+    // would be pulled from the DB on every poll (huge egress). Only the small
+    // fields are needed here.
+    pool.query(
+      `SELECT id, started_at, map_seed, map_size, map_url, wipe_sig, is_current
+       FROM wipes WHERE is_current = TRUE LIMIT 1`
+    ),
   ]);
   await pool.end();
 
-  return NextResponse.json({
+  const res = NextResponse.json({
     ...state,
     wipe: wipeRes.rows[0] ?? null,
   });
+  // Edge-cache 2s so concurrent polls coalesce to ~1 DB read / 2s globally.
+  res.headers.set("CDN-Cache-Control", "public, s-maxage=2, stale-while-revalidate=10");
+  return res;
 }

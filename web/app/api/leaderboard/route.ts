@@ -48,5 +48,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ category, wipeScope, players });
+  const res = NextResponse.json({ category, wipeScope, players });
+  res.headers.set("CDN-Cache-Control", "public, s-maxage=10, stale-while-revalidate=30");
+  return res;
 }

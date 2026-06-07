@@ -36,7 +36,10 @@ export async function GET() {
     return new NextResponse(blob, {
       headers: {
         "Content-Type": "image/jpeg",
+        // The URL is cache-busted per wipe (?v=wipeDate), so cache hard at the
+        // edge — the ~500KB image should leave the DB only once per wipe.
         "Cache-Control": "public, max-age=3600",
+        "CDN-Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
       },
     });
   } finally {

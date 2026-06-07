@@ -8,5 +8,7 @@ export async function GET(req: NextRequest) {
   const since = Math.min(Number(searchParams.get("since") ?? 86400), 7 * 86400);
   const points = await queryPopulation(since);
   const peak = points.reduce((m, p) => Math.max(m, p.online), 0);
-  return NextResponse.json({ points, peak });
+  const res = NextResponse.json({ points, peak });
+  res.headers.set("CDN-Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
+  return res;
 }

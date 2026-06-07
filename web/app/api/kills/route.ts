@@ -14,5 +14,7 @@ export async function GET(req: NextRequest) {
   const wipeId = scope === "lifetime" ? undefined : await getCurrentWipeId();
   const kills = await queryRecentKills({ wipeId, steamId, sinceSeconds, limit });
 
-  return NextResponse.json({ kills });
+  const res = NextResponse.json({ kills });
+  res.headers.set("CDN-Cache-Control", "public, s-maxage=5, stale-while-revalidate=20");
+  return res;
 }

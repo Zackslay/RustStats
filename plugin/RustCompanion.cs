@@ -106,6 +106,10 @@ namespace Oxide.Plugins
         private string _liveBossLabel;
         private float _liveBossScale = 1f;
 
+        // Roaming merchant (set by the ApMerchant plugin via hooks).
+        private BaseEntity _liveMerchant;
+        private string _liveMerchantLabel;
+
         private static bool IsEventEntity(BaseNetworkable e) =>
             e is PatrolHelicopter || e is BradleyAPC || e is CargoShip || e is CH47Helicopter;
 
@@ -483,6 +487,13 @@ namespace Oxide.Plugins
                 events.Add(new { type = "boss", x = bp.x, y = bp.y, z = bp.z, health = Mathf.RoundToInt(hp), label = _liveBossLabel ?? "Boss", scale = _liveBossScale });
             }
 
+            // Roaming merchant (from ApMerchant).
+            if (_liveMerchant != null && !_liveMerchant.IsDestroyed)
+            {
+                var mp = _liveMerchant.transform.position;
+                events.Add(new { type = "merchant", x = mp.x, y = mp.y, z = mp.z, label = _liveMerchantLabel ?? "Merchant" });
+            }
+
             payload["events"] = events;
             payload["shops"] = shops;
 
@@ -654,6 +665,19 @@ namespace Oxide.Plugins
             _liveBoss = null;
             _liveBossLabel = null;
             _liveBossScale = 1f;
+        }
+
+        // Roaming merchant relay (fired by ApMerchant).
+        private void OnApMerchantSpawned(BaseEntity merchant, string label)
+        {
+            _liveMerchant = merchant;
+            _liveMerchantLabel = label;
+        }
+
+        private void OnApMerchantDespawned()
+        {
+            _liveMerchant = null;
+            _liveMerchantLabel = null;
         }
 
         // ── Hooks: NPC humanoid kills (scientists vs other) ────────────────────

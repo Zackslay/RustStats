@@ -12,8 +12,8 @@ economy). Prioritize features that exploit web↔game integration — others can
 - ✅ **Death heatmap** — `/api/heatmap` + Deaths Heat toggle on the map (binned cells from kill_log).
 - ✅ **Activity heatmaps** — throttled position sampling into heat_grid; Activity toggle on the map.
 - ✅ **Player timeline on profiles** — "Joined" date + existing badge/milestone system.
-- ⬜ **Roaming merchant NPC** — wandering trader shown on the live map with rotating stock. (plugin work; not started)
-- ⬜ **Base vending district** — player vending machines listed on the dashboard map ("go shopping"). (plugin work; not started)
+- ✅ **Roaming merchant NPC** — `ApMerchant.cs`: invulnerable passive trader, relocates every 30 min, shown on the live map ($ event marker); `/trade` nearby gives a daily RP bonus + opens the shop; `/merchant` reports its grid.
+- ✅ **Base vending district** — `RustCompanion` relays broadcasting player vending machines → `/api/shops` → Shops toggle on the map ($ markers, name on hover).
 
 ## ⏭️ Secondary next up
 - ⬜ **"Hold the monument" wave defense** — escalating NPC waves at a monument → reward vault.

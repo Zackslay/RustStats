@@ -98,6 +98,12 @@ input {
   box-shadow: 0 0 24px rgba(220,38,38,0.65);
   animation: bosspulse 1.2s ease-in-out infinite;
 }
+.event-merchant {
+  border-color: rgba(251,191,36,0.85);
+  background: rgba(69,52,10,0.92);
+  box-shadow: 0 0 18px rgba(251,191,36,0.5);
+}
+.event-merchant .event-glyph { color: #fbbf24; }
 @keyframes bosspulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.15); }

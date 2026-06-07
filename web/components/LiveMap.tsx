@@ -34,6 +34,7 @@ const EVENT_GLYPHS: Record<string, string> = {
   cargo: "C",
   chinook: "CH",
   boss: "X",
+  merchant: "$",
 };
 
 const MAP_UNITS = 1000;

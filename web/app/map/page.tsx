@@ -22,6 +22,7 @@ const EVENT_COLORS: Record<string, string> = {
   cargo: "border-blue-400/50 text-blue-300",
   chinook: "border-yellow-400/50 text-yellow-300",
   boss: "border-red-600 bg-red-950/40 text-red-200",
+  merchant: "border-amber-400/60 bg-amber-950/30 text-amber-200",
 };
 
 type Pin = { lat: number; lng: number };
@@ -446,7 +447,7 @@ function EventRow({
   active: boolean;
   onFocus: () => void;
 }) {
-  const Icon = event.type === "boss" ? Skull : event.type === "bradley" ? Shield : Activity;
+  const Icon = event.type === "boss" ? Skull : event.type === "bradley" ? Shield : event.type === "merchant" ? ShoppingCart : Activity;
   return (
     <button
       onClick={onFocus}

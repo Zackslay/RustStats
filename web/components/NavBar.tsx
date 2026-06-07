@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, CalendarDays, Map, Trophy } from "lucide-react";
+import { Activity, CalendarDays, Map, Network, Trophy } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/", label: "Home", icon: Activity },
   { href: "/map", label: "Live Map", icon: Map },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  { href: "/tech", label: "Tech Tree", icon: Network },
   { href: "/wipe", label: "Wipe", icon: CalendarDays },
 ];
 

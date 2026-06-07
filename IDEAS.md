@@ -20,6 +20,7 @@ economy). Prioritize features that exploit web↔game integration — others can
 - ✅ **Dynamic commodity prices** — ApAuction reports each sale (`OnApMarketSale`) → RustCompanion buffers/relays → `market_trades` table → `/market` page: live RP/unit price, 7-day change, volume, and a sparkline per commodity.
 - ⬜ **Starter questline / tutorial** — funnels new players into shop/market/bosses.
 - ⬜ **Physically scaling bosses (server-side)** — drive real in-world entity scale from per-tier `MarkerScale` so bigger map marker == bigger boss. Animals/simple entities scale cleanly via `transform.localScale` + network update (the "giant chicken" trick); humanoid Scientists are finicky (rig/anim/hitbox). Route: spawn a scalable creature boss (giant bear/boar) OR integrate EntityScaleManager (WhiteThunder), scaling the collider too so it stays hittable. Works on Oxide today (not Carbon-specific).
+- ⬜ **Brainstorm 50 brand-new PvE ideas** — generate 50 creative PvE features NOT already listed anywhere in this file (check both the catalog and every section first to avoid repeats). Focus on things that make this server unlike the others. Append them as a new section ("## 💡 Fresh PvE ideas (batch 1)") — these are a backlog to pick from, do NOT build them, just write them down.
 
 ## 🌅 Future idea list
 - ⬜ **Faction / territory war (living world)** — NPC factions hold monuments; players tip the balance; territory shaded on the live map.

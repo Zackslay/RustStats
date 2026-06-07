@@ -21,7 +21,12 @@ namespace Oxide.Plugins
         // ── Config ────────────────────────────────────────────────────────────
         private class Configuration
         {
-            [JsonProperty("Use Economics money instead of ServerRewards RP")] public bool UseEconomics { get; set; } = false;
+            [JsonProperty("Currency mode: serverrewards | economics | bank")] public string CurrencyMode { get; set; } = "serverrewards";
+            [JsonProperty("Currency label (e.g. RP, coins, AP Points)")] public string CurrencyLabel { get; set; } = "RP";
+            [JsonProperty("Bank plugin name (bank mode)")] public string BankPlugin { get; set; } = "BankSystem";
+            [JsonProperty("Bank deposit method")] public string BankDeposit { get; set; } = "Deposit";
+            [JsonProperty("Bank withdraw method")] public string BankWithdraw { get; set; } = "Withdraw";
+            [JsonProperty("Bank balance method")] public string BankBalance { get; set; } = "Balance";
             [JsonProperty("Max active listings per player")] public int MaxListings { get; set; } = 5;
             [JsonProperty("Max price per listing")] public int MaxPrice { get; set; } = 1000000;
             [JsonProperty("Listing fee (RP, taken when listing)")] public int ListingFee { get; set; } = 0;
@@ -78,7 +83,8 @@ namespace Oxide.Plugins
         private void OnServerSave() => Save();
         private void Unload() => Save();
 
-        private string Cur => _cfg.UseEconomics ? "coins" : "RP";
+        private string Cur => _cfg.CurrencyLabel;
+        private Plugin Bank => Interface.Oxide.RootPluginManager.GetPlugin(_cfg.BankPlugin) as Plugin;
 
         // ── Command ───────────────────────────────────────────────────────────
         [ChatCommand("market")]
@@ -219,27 +225,47 @@ namespace Oxide.Plugins
         private void GivePoints(ulong userId, int amount)
         {
             if (amount <= 0) return;
-            if (_cfg.UseEconomics) Economics?.Call("Deposit", userId.ToString(), (double)amount);
-            else ServerRewards?.Call("AddPoints", userId, amount);
+            switch (_cfg.CurrencyMode)
+            {
+                case "economics": Economics?.Call("Deposit", userId.ToString(), (double)amount); break;
+                case "bank": Bank?.Call(_cfg.BankDeposit, userId, (double)amount); break;
+                default: ServerRewards?.Call("AddPoints", userId, amount); break;
+            }
         }
 
         private int GetBalance(BasePlayer p)
         {
-            if (_cfg.UseEconomics)
+            switch (_cfg.CurrencyMode)
             {
-                var b = Economics?.Call("Balance", p.userID);
-                if (b is double d) return (int)d;
-                return 0;
+                case "economics":
+                {
+                    var b = Economics?.Call("Balance", p.userID);
+                    return b is double d ? (int)d : 0;
+                }
+                case "bank":
+                {
+                    var b = Bank?.Call(_cfg.BankBalance, p.userID);
+                    if (b is double bd) return (int)bd;
+                    if (b is int bi) return bi;
+                    return 0;
+                }
+                default:
+                {
+                    var pts = ServerRewards?.Call("CheckPoints", p.userID);
+                    return pts is int i ? i : 0;
+                }
             }
-            var pts = ServerRewards?.Call("CheckPoints", p.userID);
-            return pts is int i ? i : 0;
         }
 
         private bool TakePoints(BasePlayer p, int amount)
         {
             if (GetBalance(p) < amount) return false;
-            if (_cfg.UseEconomics) Economics?.Call("Withdraw", p.UserIDString, (double)amount);
-            else ServerRewards?.Call("TakePoints", p.userID, amount);
+            switch (_cfg.CurrencyMode)
+            {
+                case "economics": Economics?.Call("Withdraw", p.UserIDString, (double)amount); break;
+                case "bank": Bank?.Call(_cfg.BankWithdraw, p.userID, (double)amount); break;
+                default: ServerRewards?.Call("TakePoints", p.userID, amount); break;
+            }
             return true;
         }
 

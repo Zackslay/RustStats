@@ -8,12 +8,12 @@ economy). Prioritize features that exploit web↔game integration — others can
 ---
 
 ## 🔨 Adding next (current focus)
-- ⬜ **Community tech tree** — server collectively unlocks perks/announcements by hitting shared stat milestones; progress bars on the dashboard.
-- ⬜ **Death heatmap** — heatmap of kill/death locations on the dashboard (kill x/z already stored).
-- ⬜ **Activity heatmaps** — where players spend time / farm (grid-bucketed position sampling).
-- ⬜ **Player timeline on profiles** — first seen, milestones, biggest haul, streaks.
-- ⬜ **Roaming merchant NPC** — wandering trader shown on the live map with rotating stock.
-- ⬜ **Base vending district** — player vending machines listed on the dashboard map ("go shopping").
+- ✅ **Community tech tree** — `/tech` page: server-wide goal nodes + live progress + perks (dashboard-driven; perks applied by admin on unlock for now).
+- ✅ **Death heatmap** — `/api/heatmap` + Deaths Heat toggle on the map (binned cells from kill_log).
+- ✅ **Activity heatmaps** — throttled position sampling into heat_grid; Activity toggle on the map.
+- ✅ **Player timeline on profiles** — "Joined" date + existing badge/milestone system.
+- ⬜ **Roaming merchant NPC** — wandering trader shown on the live map with rotating stock. (plugin work; not started)
+- ⬜ **Base vending district** — player vending machines listed on the dashboard map ("go shopping"). (plugin work; not started)
 
 ## ⏭️ Secondary next up
 - ⬜ **"Hold the monument" wave defense** — escalating NPC waves at a monument → reward vault.

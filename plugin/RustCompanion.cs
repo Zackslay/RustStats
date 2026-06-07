@@ -115,6 +115,9 @@ namespace Oxide.Plugins
         private Vector3 _siegePos;
         private string _siegeLabel;
 
+        // Market sales buffered for the dashboard commodity tracker (ApAuction).
+        private readonly List<object> _pendingSales = new List<object>();
+
         private static bool IsEventEntity(BaseNetworkable e) =>
             e is PatrolHelicopter || e is BradleyAPC || e is CargoShip || e is CH47Helicopter;
 
@@ -508,6 +511,13 @@ namespace Oxide.Plugins
             payload["events"] = events;
             payload["shops"] = shops;
 
+            // Flush any market sales accumulated since the last tick.
+            if (_pendingSales.Count > 0)
+            {
+                payload["sales"] = _pendingSales.ToArray();
+                _pendingSales.Clear();
+            }
+
             PostAsync("/api/plugin", payload);
         }
 
@@ -708,6 +718,14 @@ namespace Oxide.Plugins
         {
             _siegeActive = false;
             _siegeLabel = null;
+        }
+
+        // Market sale relay (fired by ApAuction on each completed purchase).
+        private void OnApMarketSale(string shortname, int amount, int price)
+        {
+            if (string.IsNullOrEmpty(shortname) || amount <= 0 || price <= 0) return;
+            if (_pendingSales.Count >= 200) return; // safety cap
+            _pendingSales.Add(new { shortname, amount, price });
         }
 
         // ── Hooks: NPC humanoid kills (scientists vs other) ────────────────────

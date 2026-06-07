@@ -681,6 +681,105 @@ export async function queryActivityHeat(
   }
 }
 
+// ── Market commodity tracker ────────────────────────────────────────────────────
+let marketTableEnsured = false;
+async function ensureMarketTable(): Promise<void> {
+  if (marketTableEnsured) return;
+  await exec(
+    `CREATE TABLE IF NOT EXISTS market_trades (
+       id BIGSERIAL PRIMARY KEY,
+       wipe_id INTEGER,
+       shortname TEXT NOT NULL,
+       amount INTEGER NOT NULL,
+       unit_price DOUBLE PRECISION NOT NULL,
+       ts TIMESTAMPTZ NOT NULL DEFAULT now())`
+  );
+  await exec(`CREATE INDEX IF NOT EXISTS market_trades_ts_idx ON market_trades (ts)`);
+  marketTableEnsured = true;
+}
+
+export async function recordMarketTrades(
+  wipeId: number | undefined,
+  sales: { shortname?: string; amount?: number; price?: number }[]
+): Promise<void> {
+  if (!sales || sales.length === 0) return;
+  await ensureMarketTable();
+  for (const s of sales) {
+    const name = (s.shortname ?? "").trim();
+    const amount = Math.round(s.amount ?? 0);
+    const price = Math.round(s.price ?? 0);
+    if (!name || amount <= 0 || price <= 0) continue;
+    const unit = price / amount;
+    await exec(
+      `INSERT INTO market_trades (wipe_id, shortname, amount, unit_price)
+       VALUES ($1, $2, $3, $4)`,
+      [wipeId ?? null, name, amount, unit]
+    );
+  }
+}
+
+export interface CommodityTrend {
+  shortname: string;
+  trades: number;
+  volume: number;
+  lastPrice: number;
+  avgPrice: number;
+  weekAvg: number;
+  changePct: number; // last vs week avg
+  spark: number[]; // daily avg unit price, oldest→newest (up to 7)
+}
+
+export async function queryMarketTrends(): Promise<CommodityTrend[]> {
+  try {
+    await ensureMarketTable();
+    const rows = await query<{
+      shortname: string; trades: string; volume: string;
+      last_price: string; avg_price: string;
+    }>(
+      `SELECT shortname,
+              COUNT(*)              AS trades,
+              SUM(amount)           AS volume,
+              (ARRAY_AGG(unit_price ORDER BY ts DESC))[1] AS last_price,
+              AVG(unit_price)       AS avg_price
+         FROM market_trades
+        WHERE ts > now() - INTERVAL '7 days'
+        GROUP BY shortname
+        ORDER BY volume DESC
+        LIMIT 60`
+    );
+    // Daily average unit price per commodity for the sparkline.
+    const daily = await query<{ shortname: string; day: string; avg_price: string }>(
+      `SELECT shortname, date_trunc('day', ts) AS day, AVG(unit_price) AS avg_price
+         FROM market_trades
+        WHERE ts > now() - INTERVAL '7 days'
+        GROUP BY shortname, day
+        ORDER BY day ASC`
+    );
+    const sparks = new Map<string, number[]>();
+    for (const d of daily) {
+      const arr = sparks.get(d.shortname) ?? [];
+      arr.push(Number(d.avg_price));
+      sparks.set(d.shortname, arr);
+    }
+    return rows.map((r) => {
+      const last = Number(r.last_price);
+      const week = Number(r.avg_price);
+      return {
+        shortname: r.shortname,
+        trades: Number(r.trades),
+        volume: Number(r.volume),
+        lastPrice: last,
+        avgPrice: week,
+        weekAvg: week,
+        changePct: week > 0 ? ((last - week) / week) * 100 : 0,
+        spark: sparks.get(r.shortname) ?? [last],
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 // ── Heatmap points ────────────────────────────────────────────────────────────
 export async function queryDeathPoints(
   wipeId: number | undefined,

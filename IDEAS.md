@@ -17,7 +17,7 @@ economy). Prioritize features that exploit web↔game integration — others can
 
 ## ⏭️ Secondary next up
 - ✅ **"Hold the monument" wave defense** — `ApSiege.cs`: escalating NPC waves (scaling count/health/damage) at a random monument; clear all waves → reward vault + RP/Economics for defenders. Live-map "siege" event (orange pulsing `!`).
-- ⬜ **Dynamic commodity prices** — shop sell prices fall when the server floods an item, recover over time; charted.
+- ✅ **Dynamic commodity prices** — ApAuction reports each sale (`OnApMarketSale`) → RustCompanion buffers/relays → `market_trades` table → `/market` page: live RP/unit price, 7-day change, volume, and a sparkline per commodity.
 - ⬜ **Starter questline / tutorial** — funnels new players into shop/market/bosses.
 
 ## 🌅 Future idea list

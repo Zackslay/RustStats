@@ -214,6 +214,9 @@ namespace Oxide.Plugins
             _data.Listings.Remove(listing);
             Save();
 
+            // Feed the dashboard's commodity price tracker (RustCompanion relays it).
+            Interface.CallHook("OnApMarketSale", listing.Shortname, listing.Amount, listing.Price);
+
             var seller = BasePlayer.FindByID(listing.SellerId);
             seller?.ChatMessage($"{_cfg.ChatPrefix} {player.displayName} bought your {DisplayName(listing.Shortname)} for {listing.Price} {Cur}!");
             return $"Bought {listing.Amount}x {DisplayName(listing.Shortname)} for {listing.Price} {Cur}.";

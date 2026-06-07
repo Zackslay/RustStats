@@ -20,6 +20,7 @@ import {
   recordPopulationSample,
   updateBalances,
   recordHeatSamples,
+  recordMarketTrades,
 } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
@@ -141,6 +142,14 @@ export async function POST(req: NextRequest) {
         killerId?: string; victimId?: string; weapon?: string;
         headshot?: boolean; timestamp?: number; x?: number; z?: number;
       }>
+    );
+  }
+
+  // ── Market sales (commodity price tracker) ───────────────────────────────────
+  if (Array.isArray(body.sales)) {
+    await recordMarketTrades(
+      activeWipeId,
+      body.sales as Array<{ shortname?: string; amount?: number; price?: number }>
     );
   }
 

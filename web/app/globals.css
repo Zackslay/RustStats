@@ -104,6 +104,15 @@ input {
   box-shadow: 0 0 18px rgba(251,191,36,0.5);
 }
 .event-merchant .event-glyph { color: #fbbf24; }
+.event-siege {
+  width: 40px;
+  height: 40px;
+  border-color: rgba(249,115,22,0.95);
+  background: rgba(67,33,8,0.95);
+  box-shadow: 0 0 22px rgba(249,115,22,0.6);
+  animation: bosspulse 1.4s ease-in-out infinite;
+}
+.event-siege .event-glyph { color: #fb923c; }
 @keyframes bosspulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.15); }

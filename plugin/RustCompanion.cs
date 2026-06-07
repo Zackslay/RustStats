@@ -110,6 +110,11 @@ namespace Oxide.Plugins
         private BaseEntity _liveMerchant;
         private string _liveMerchantLabel;
 
+        // Monument siege (set by the ApSiege plugin via hooks).
+        private bool _siegeActive;
+        private Vector3 _siegePos;
+        private string _siegeLabel;
+
         private static bool IsEventEntity(BaseNetworkable e) =>
             e is PatrolHelicopter || e is BradleyAPC || e is CargoShip || e is CH47Helicopter;
 
@@ -494,6 +499,12 @@ namespace Oxide.Plugins
                 events.Add(new { type = "merchant", x = mp.x, y = mp.y, z = mp.z, label = _liveMerchantLabel ?? "Merchant" });
             }
 
+            // Monument siege (from ApSiege).
+            if (_siegeActive)
+            {
+                events.Add(new { type = "siege", x = _siegePos.x, y = _siegePos.y, z = _siegePos.z, label = _siegeLabel ?? "Siege" });
+            }
+
             payload["events"] = events;
             payload["shops"] = shops;
 
@@ -678,6 +689,25 @@ namespace Oxide.Plugins
         {
             _liveMerchant = null;
             _liveMerchantLabel = null;
+        }
+
+        // Monument siege relay (fired by ApSiege).
+        private void OnApSiegeStarted(Vector3 pos, string label)
+        {
+            _siegeActive = true;
+            _siegePos = pos;
+            _siegeLabel = label;
+        }
+
+        private void OnApSiegeUpdated(string label)
+        {
+            if (_siegeActive) _siegeLabel = label;
+        }
+
+        private void OnApSiegeEnded()
+        {
+            _siegeActive = false;
+            _siegeLabel = null;
         }
 
         // ── Hooks: NPC humanoid kills (scientists vs other) ────────────────────

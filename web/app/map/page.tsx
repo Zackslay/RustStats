@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ChevronDown, Crosshair, Flame, MapPinned, Settings, Shield, ShoppingCart, Skull, Users, X } from "lucide-react";
+import { Activity, ChevronDown, Crosshair, Flame, MapPinned, Settings, Shield, ShoppingCart, Skull, Swords, Users, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -23,6 +23,7 @@ const EVENT_COLORS: Record<string, string> = {
   chinook: "border-yellow-400/50 text-yellow-300",
   boss: "border-red-600 bg-red-950/40 text-red-200",
   merchant: "border-amber-400/60 bg-amber-950/30 text-amber-200",
+  siege: "border-orange-500 bg-orange-950/40 text-orange-200",
 };
 
 type Pin = { lat: number; lng: number };
@@ -447,7 +448,7 @@ function EventRow({
   active: boolean;
   onFocus: () => void;
 }) {
-  const Icon = event.type === "boss" ? Skull : event.type === "bradley" ? Shield : event.type === "merchant" ? ShoppingCart : Activity;
+  const Icon = event.type === "boss" ? Skull : event.type === "bradley" ? Shield : event.type === "merchant" ? ShoppingCart : event.type === "siege" ? Swords : Activity;
   return (
     <button
       onClick={onFocus}

@@ -16,7 +16,7 @@ economy). Prioritize features that exploit web↔game integration — others can
 - ✅ **Base vending district** — `RustCompanion` relays broadcasting player vending machines → `/api/shops` → Shops toggle on the map ($ markers, name on hover).
 
 ## ⏭️ Secondary next up
-- ⬜ **"Hold the monument" wave defense** — escalating NPC waves at a monument → reward vault.
+- ✅ **"Hold the monument" wave defense** — `ApSiege.cs`: escalating NPC waves (scaling count/health/damage) at a random monument; clear all waves → reward vault + RP/Economics for defenders. Live-map "siege" event (orange pulsing `!`).
 - ⬜ **Dynamic commodity prices** — shop sell prices fall when the server floods an item, recover over time; charted.
 - ⬜ **Starter questline / tutorial** — funnels new players into shop/market/bosses.
 

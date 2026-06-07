@@ -259,18 +259,18 @@ namespace Oxide.Plugins
         {
             var p = arg.Player();
             if (p == null) return;
-            int page = arg.Args != null && arg.Args.Length > 0 && int.TryParse(arg.Args[0], out var pg) ? pg : 0;
-            OpenUi(p, page, "");
+            OpenUi(p, arg.GetInt(0, 0), "");
         }
 
         [ConsoleCommand("apmarket.do")]
         private void CcDo(ConsoleSystem.Arg arg)
         {
             var p = arg.Player();
-            if (p == null || arg.Args == null || arg.Args.Length < 3) return;
-            string action = arg.Args[0];
-            string shortname = arg.Args[1];
-            int page = int.TryParse(arg.Args[2], out var pg) ? pg : 0;
+            if (p == null) return;
+            string action = arg.GetString(0, "");
+            string shortname = arg.GetString(1, "");
+            int page = arg.GetInt(2, 0);
+            if (action.Length == 0 || shortname.Length == 0) return;
             string status;
 
             switch (action)

@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ChevronDown, Crosshair, MapPinned, Settings, Shield, Skull, Users, X } from "lucide-react";
+import { Activity, ChevronDown, Crosshair, Flame, MapPinned, Settings, Shield, Skull, Users, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -37,6 +37,8 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
   const [deaths, setDeaths] = useState<DeathMarker[]>([]);
   const [showDeaths, setShowDeaths] = useState(true);
+  const [heat, setHeat] = useState<{ x: number; z: number }[]>([]);
+  const [showHeat, setShowHeat] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [showPlayers, setShowPlayers] = useState(true);
   const [showKills, setShowKills] = useState(false);
@@ -177,12 +179,25 @@ export default function MapPage() {
     }
   }, []);
 
+  const fetchHeat = useCallback(async () => {
+    try {
+      const res = await fetch("/api/heatmap?wipe=current&limit=5000");
+      if (res.ok) {
+        const data = await res.json();
+        setHeat(data.points ?? []);
+      }
+    } catch {
+      // Keep previous heat visible through transient failures.
+    }
+  }, []);
+
   const tickClock = useCallback(() => {
     setNowSec(Math.floor(Date.now() / 1000));
   }, []);
 
   usePolling(fetchState, POLL_INTERVAL);
   usePolling(fetchDeaths, showDeaths ? 60000 : 0);
+  usePolling(fetchHeat, showHeat ? 60000 : 0);
   usePolling(tickClock, 1000);
 
   const rawMapUrl = state.server?.mapUrl ?? "";
@@ -285,6 +300,7 @@ export default function MapPage() {
             offX={offX}
             offZ={offZ}
             deaths={showDeaths ? deaths : []}
+            heat={showHeat ? heat : []}
             calibrating={calibrating}
             onCalibrate={onCalibrate}
             focusTarget={focusTarget}
@@ -300,6 +316,16 @@ export default function MapPage() {
             >
               <Skull className="h-3.5 w-3.5" aria-hidden="true" />
               Deaths
+            </button>
+            <button
+              onClick={() => setShowHeat((v) => !v)}
+              className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-semibold ${
+                showHeat ? "border-orange-500 bg-orange-500 text-white" : "border-zinc-700 bg-black/75 text-zinc-300 hover:text-white"
+              }`}
+              title="Toggle a death heatmap for this wipe"
+            >
+              <Flame className="h-3.5 w-3.5" aria-hidden="true" />
+              Heatmap
             </button>
             <button
               onClick={() => setShowTools((v) => !v)}

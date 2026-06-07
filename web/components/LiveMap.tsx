@@ -13,6 +13,7 @@ interface Props {
   offX?: number;
   offZ?: number;
   deaths?: DeathMarker[];
+  heat?: { x: number; z: number }[];
   calibrating?: boolean;
   onCalibrate?: (latNorm: number, lngNorm: number) => void;
   focusTarget?: { x: number; z: number; key: string } | null;
@@ -45,6 +46,7 @@ export default function LiveMap({
   offX = 0,
   offZ = 0,
   deaths = [],
+  heat = [],
   calibrating = false,
   onCalibrate,
   focusTarget = null,
@@ -57,6 +59,7 @@ export default function LiveMap({
   const monumentMarkersRef = useRef<import("leaflet").Marker[]>([]);
   const deathMarkersRef = useRef<import("leaflet").Marker[]>([]);
   const gridLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
+  const heatLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
 
   const rustToLatLng = useCallback((x: number, z: number): [number, number] => {
@@ -279,7 +282,53 @@ export default function LiveMap({
     }
   }, [deaths, leafletLoaded, rustToLatLng]);
 
+  // Heatmap layer (binned colored cells from a list of world points)
+  useEffect(() => {
+    if (!mapRef.current || !L) return;
+    const map = mapRef.current;
+    if (heatLayerRef.current) { heatLayerRef.current.remove(); heatLayerRef.current = null; }
+    if (heat.length === 0) return;
+
+    const N = 48;
+    const half = mapSize / 2;
+    const cell = mapSize / N;
+    const counts = new Map<string, number>();
+    let max = 1;
+    for (const p of heat) {
+      const gx = Math.min(N - 1, Math.max(0, Math.floor((p.x + half) / cell)));
+      const gz = Math.min(N - 1, Math.max(0, Math.floor((p.z + half) / cell)));
+      const k = `${gx},${gz}`;
+      const v = (counts.get(k) ?? 0) + 1;
+      counts.set(k, v);
+      if (v > max) max = v;
+    }
+
+    const group = L.layerGroup();
+    for (const [k, v] of counts) {
+      const [gx, gz] = k.split(",").map(Number);
+      const x0 = -half + gx * cell, x1 = x0 + cell;
+      const z0 = -half + gz * cell, z1 = z0 + cell;
+      const a = rustToLatLng(x0, z0);
+      const b = rustToLatLng(x1, z1);
+      const t = v / max;
+      L.rectangle(
+        [[Math.min(a[0], b[0]), Math.min(a[1], b[1])], [Math.max(a[0], b[0]), Math.max(a[1], b[1])]],
+        { stroke: false, fill: true, fillColor: heatColor(t), fillOpacity: 0.18 + 0.55 * t, interactive: false }
+      ).addTo(group);
+    }
+    group.addTo(map);
+    heatLayerRef.current = group;
+  }, [heat, leafletLoaded, rustToLatLng, mapSize]);
+
   return <div ref={containerRef} className="h-full w-full rounded-lg" />;
+}
+
+// 0 -> cyan, 0.5 -> yellow, 1 -> red
+function heatColor(t: number): string {
+  const r = Math.round(255 * Math.min(1, t * 2));
+  const g = Math.round(255 * Math.min(1, 2 - t * 2));
+  const b = Math.round(255 * Math.max(0, 1 - t * 2));
+  return `rgb(${r},${g},${b})`;
 }
 
 function colLabel(i: number): string {

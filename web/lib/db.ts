@@ -631,6 +631,23 @@ export async function recordKills(
   }
 }
 
+// ── Heatmap points ────────────────────────────────────────────────────────────
+export async function queryDeathPoints(
+  wipeId: number | undefined,
+  limit = 4000
+): Promise<{ x: number; z: number }[]> {
+  const params: unknown[] = [];
+  let where = "x IS NOT NULL AND z IS NOT NULL";
+  let i = 1;
+  if (wipeId !== undefined) { where += ` AND wipe_id = $${i++}`; params.push(wipeId); }
+  params.push(limit);
+  const rows = await query<{ x: number; z: number }>(
+    `SELECT x, z FROM kill_log WHERE ${where} ORDER BY id DESC LIMIT $${i}`,
+    params
+  );
+  return rows.map((r) => ({ x: Number(r.x), z: Number(r.z) }));
+}
+
 // ── Richest (economy) board — from players, not wipe-scoped ──────────────────
 export async function queryRichest(opts: { search: string; limit: number }) {
   await ensurePlayerEconomyColumns();

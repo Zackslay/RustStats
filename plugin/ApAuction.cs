@@ -232,6 +232,13 @@ namespace Oxide.Plugins
         }
 
         // ── UI ────────────────────────────────────────────────────────────────
+        // Public entry point so other plugins (e.g. ShopController's MARKET
+        // button) can open the market: ApAuction.Call("OpenMarketUi", player).
+        private void OpenMarketUi(BasePlayer player)
+        {
+            if (player != null) OpenUi(player, 0, "all", "");
+        }
+
         private void OpenUi(BasePlayer player, int page, string tab, string status)
         {
             bool mine = tab == "mine";

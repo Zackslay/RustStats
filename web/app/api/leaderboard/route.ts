@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentWipeId, queryLeaderboard, saveAvatars } from "@/lib/db";
+import { getCurrentWipeId, queryLeaderboard, queryRichest, saveAvatars } from "@/lib/db";
 import { fetchSteamAvatars } from "@/lib/steam";
 
 export const dynamic = "force-dynamic";
 
-type Category = "overall" | "boss" | "events" | "hunting" | "pvp" | "gathering" | "explosives" | "building" | "npc";
+type Category = "overall" | "boss" | "events" | "hunting" | "pvp" | "gathering" | "explosives" | "building" | "npc" | "economy";
 type WipeScope = "current" | "lifetime";
 
 export async function GET(req: NextRequest) {
@@ -13,6 +13,20 @@ export async function GET(req: NextRequest) {
   const wipeScope = (searchParams.get("wipe") ?? "current") as WipeScope;
   const search = searchParams.get("search") ?? "";
   const limit = Math.min(Number(searchParams.get("limit") ?? 50), 200);
+
+  // Economy ("Richest") board is from the players table, not wipe-scoped.
+  if (category === "economy") {
+    const rich = await queryRichest({ search, limit });
+    const players = rich.map((r, i) => ({
+      rank: i + 1,
+      ...r,
+      money: Number((r as { money?: number }).money ?? 0),
+      rp: Number((r as { rp?: number }).rp ?? 0),
+    }));
+    const res = NextResponse.json({ category, wipeScope, players });
+    res.headers.set("CDN-Cache-Control", "public, s-maxage=15, stale-while-revalidate=60");
+    return res;
+  }
 
   const wipeId = await getCurrentWipeId();
 

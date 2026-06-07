@@ -631,6 +631,24 @@ export async function recordKills(
   }
 }
 
+// ── Richest (economy) board — from players, not wipe-scoped ──────────────────
+export async function queryRichest(opts: { search: string; limit: number }) {
+  await ensurePlayerEconomyColumns();
+  const params: unknown[] = [];
+  let i = 1;
+  let where = "WHERE (money > 0 OR rp > 0)";
+  if (opts.search) {
+    where += ` AND display_name ILIKE $${i++}`;
+    params.push(`%${opts.search}%`);
+  }
+  params.push(opts.limit);
+  return query(
+    `SELECT steam_id, display_name, avatar_url, money, rp
+     FROM players ${where} ORDER BY rp DESC, money DESC LIMIT $${i}`,
+    params
+  );
+}
+
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 const ORDER_BY: Record<string, string> = {
   overall:    "SUM(s.rating) DESC",

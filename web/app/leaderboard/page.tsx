@@ -3,6 +3,7 @@
 import {
   Bomb,
   Building2,
+  Coins,
   Crosshair,
   Hammer,
   Leaf,
@@ -43,9 +44,11 @@ interface PlayerRow {
   boss_kills: number;
   playtime: number;
   rating: number;
+  money?: number;
+  rp?: number;
 }
 
-type Category = "overall" | "boss" | "npc" | "hunting" | "events" | "gathering" | "building" | "explosives";
+type Category = "overall" | "boss" | "npc" | "hunting" | "events" | "gathering" | "building" | "explosives" | "economy";
 type WipeScope = "current" | "lifetime";
 
 const CATEGORIES: { id: Category; label: string; icon: LucideIcon }[] = [
@@ -57,6 +60,7 @@ const CATEGORIES: { id: Category; label: string; icon: LucideIcon }[] = [
   { id: "gathering", label: "Gathering", icon: Hammer },
   { id: "building", label: "Building", icon: Building2 },
   { id: "explosives", label: "Explosives", icon: Bomb },
+  { id: "economy", label: "Richest", icon: Coins },
 ];
 
 export default function LeaderboardPage() {
@@ -275,6 +279,12 @@ function renderHeaders(category: Category) {
     </>
   );
   if (category === "building") return <th className="px-4 py-3 text-right">Structures</th>;
+  if (category === "economy") return (
+    <>
+      <th className="px-4 py-3 text-right">RP</th>
+      <th className="px-4 py-3 text-right">Money</th>
+    </>
+  );
   return (
     <>
       <th className="px-4 py-3 text-right">Rockets</th>
@@ -324,6 +334,12 @@ function renderCells(category: Category, p: PlayerRow) {
     );
   }
   if (category === "building") return <td className="px-4 py-3 text-right font-semibold">{p.structures_placed.toLocaleString()}</td>;
+  if (category === "economy") return (
+    <>
+      <td className="px-4 py-3 text-right font-semibold text-sky-300">{(p.rp ?? 0).toLocaleString()}</td>
+      <td className="px-4 py-3 text-right text-emerald-300">{(p.money ?? 0).toLocaleString()}</td>
+    </>
+  );
   return (
     <>
       <td className="px-4 py-3 text-right">{p.rockets_fired}</td>

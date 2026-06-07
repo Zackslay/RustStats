@@ -258,20 +258,39 @@ namespace Oxide.Plugins
             c.Add(new CuiLabel { Text = { Text = $"{GetBalance(player)} {Cur}   ", FontSize = 13, Align = TextAnchor.MiddleRight, Color = "1 1 1 0.9" }, RectTransform = { AnchorMin = "0.5 0.92", AnchorMax = "0.92 1" } }, panel);
             c.Add(new CuiButton { Button = { Command = "apauction.close", Color = "0 0 0 0.4" }, Text = { Text = "✕", FontSize = 16, Align = TextAnchor.MiddleCenter, Color = "1 1 1 1" }, RectTransform = { AnchorMin = "0.92 0.92", AnchorMax = "1 1" } }, panel);
 
-            // Tabs + sell-held input
-            c.Add(Btn("apauction.open 0 all", "All", mine ? "0.2 0.2 0.22 1" : "0.45 0.35 0.7 1", 0.02f, 0.15f, 0.865f, 0.91f), panel);
-            c.Add(Btn("apauction.open 0 mine", "Mine", mine ? "0.45 0.35 0.7 1" : "0.2 0.2 0.22 1", 0.155f, 0.285f, 0.865f, 0.91f), panel);
-            c.Add(new CuiLabel { Text = { Text = "Hold item, type price →", FontSize = 10, Align = TextAnchor.MiddleRight, Color = "0.65 0.65 0.7 1" }, RectTransform = { AnchorMin = "0.45 0.865", AnchorMax = "0.78 0.91" } }, panel);
-            c.Add(new CuiPanel { Image = { Color = "1 1 1 0.10" }, RectTransform = { AnchorMin = "0.79 0.865", AnchorMax = "0.98 0.91" } }, panel);
-            c.Add(new CuiElement
+            // Tabs
+            bool sell = tab == "sell";
+            c.Add(Btn("apauction.open 0 all", "Browse", tab == "all" ? "0.45 0.35 0.7 1" : "0.2 0.2 0.22 1", 0.02f, 0.20f, 0.865f, 0.91f), panel);
+            c.Add(Btn("apauction.open 0 mine", "My Listings", tab == "mine" ? "0.45 0.35 0.7 1" : "0.2 0.2 0.22 1", 0.205f, 0.43f, 0.865f, 0.91f), panel);
+            c.Add(Btn("apauction.open 0 sell", "+ Sell Item", sell ? "0.25 0.55 0.3 1" : "0.2 0.42 0.26 1", 0.435f, 0.63f, 0.865f, 0.91f), panel);
+
+            // Sell screen
+            if (sell)
             {
-                Parent = panel,
-                Components =
+                var held = player.GetActiveItem();
+                string heldName = held != null ? $"{held.amount}x {DisplayName(held.info.shortname)}" : "(nothing in your hands)";
+                int myCount = _data.Listings.Count(l => l.SellerId == player.userID);
+
+                c.Add(new CuiLabel { Text = { Text = "List an item for sale", FontSize = 17, Align = TextAnchor.MiddleCenter, Color = "1 1 1 1" }, RectTransform = { AnchorMin = "0.1 0.74", AnchorMax = "0.9 0.82" } }, panel);
+                c.Add(new CuiLabel { Text = { Text = $"In your hands:  <color=#fbbf24>{heldName}</color>", FontSize = 15, Align = TextAnchor.MiddleCenter, Color = "0.85 0.85 0.9 1" }, RectTransform = { AnchorMin = "0.1 0.62", AnchorMax = "0.9 0.70" } }, panel);
+                c.Add(new CuiLabel { Text = { Text = "Type a price below and press ENTER to list it:", FontSize = 12, Align = TextAnchor.MiddleCenter, Color = "0.7 0.7 0.75 1" }, RectTransform = { AnchorMin = "0.1 0.51", AnchorMax = "0.9 0.57" } }, panel);
+
+                c.Add(new CuiPanel { Image = { Color = "1 1 1 0.12" }, RectTransform = { AnchorMin = "0.34 0.40", AnchorMax = "0.66 0.49" } }, panel);
+                c.Add(new CuiElement
                 {
-                    new CuiInputFieldComponent { Command = "apauction.list", FontSize = 12, Align = TextAnchor.MiddleCenter, CharsLimit = 9, Color = "1 1 1 1", NeedsKeyboard = true },
-                    new CuiRectTransformComponent { AnchorMin = "0.79 0.865", AnchorMax = "0.98 0.91" }
-                }
-            });
+                    Parent = panel,
+                    Components =
+                    {
+                        new CuiInputFieldComponent { Command = "apauction.list", FontSize = 20, Align = TextAnchor.MiddleCenter, CharsLimit = 9, Color = "1 1 1 1", NeedsKeyboard = true },
+                        new CuiRectTransformComponent { AnchorMin = "0.34 0.40", AnchorMax = "0.66 0.49" }
+                    }
+                });
+                c.Add(new CuiLabel { Text = { Text = $"price in {Cur}", FontSize = 10, Align = TextAnchor.MiddleCenter, Color = "0.55 0.55 0.6 1" }, RectTransform = { AnchorMin = "0.34 0.355", AnchorMax = "0.66 0.40" } }, panel);
+                c.Add(new CuiLabel { Text = { Text = $"Listing fee: {_cfg.ListingFee} {Cur}   ·   {myCount}/{_cfg.MaxListings} listings used", FontSize = 11, Align = TextAnchor.MiddleCenter, Color = "0.6 0.6 0.65 1" }, RectTransform = { AnchorMin = "0.1 0.27", AnchorMax = "0.9 0.33" } }, panel);
+                c.Add(new CuiLabel { Text = { Text = status.Length > 0 ? status : "Tip: hold the exact stack you want to sell, then type the price.", FontSize = 11, Align = TextAnchor.MiddleCenter, Color = "0.8 0.75 0.95 1" }, RectTransform = { AnchorMin = "0.08 0.02", AnchorMax = "0.92 0.09" } }, panel);
+                CuiHelper.AddUi(player, c);
+                return;
+            }
 
             // Rows
             var items = source.Skip(page * PerPage).Take(PerPage).ToList();
@@ -346,7 +365,7 @@ namespace Oxide.Plugins
             string status = int.TryParse(arg.GetString(0, ""), out var price)
                 ? ListHeld(p, price)
                 : "Enter a number for the price.";
-            OpenUi(p, 0, "mine", status);
+            OpenUi(p, 0, "sell", status);
         }
 
         // ── Currency helpers ──────────────────────────────────────────────────

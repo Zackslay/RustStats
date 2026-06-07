@@ -14,7 +14,7 @@ import { gridFromXZ } from "@/lib/format";
 import { usePolling } from "@/lib/usePolling";
 
 const LiveMap = dynamic(() => import("@/components/LiveMap"), { ssr: false });
-const POLL_INTERVAL = 2500;
+const POLL_INTERVAL = 15000;
 
 const EVENT_COLORS: Record<string, string> = {
   heli: "border-red-500/50 text-red-300",
@@ -182,7 +182,7 @@ export default function MapPage() {
   }, []);
 
   usePolling(fetchState, POLL_INTERVAL);
-  usePolling(fetchDeaths, 10000);
+  usePolling(fetchDeaths, showDeaths ? 60000 : 0);
   usePolling(tickClock, 1000);
 
   const rawMapUrl = state.server?.mapUrl ?? "";

@@ -25,7 +25,7 @@ export default function PopulationChart({ sinceSeconds = 86400 }: { sinceSeconds
     }
   }, [sinceSeconds]);
 
-  usePolling(refresh, 60000);
+  usePolling(refresh, 300000);
 
   if (points.length < 2) {
     return (

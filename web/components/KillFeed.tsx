@@ -29,7 +29,7 @@ export default function KillFeed({
   limit = 25,
   scope = "current",
   steamId,
-  refreshMs = 5000,
+  refreshMs = 60000,
   emptyText = "No kills logged yet.",
 }: Props) {
   const [kills, setKills] = useState<KillRow[]>([]);

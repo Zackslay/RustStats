@@ -112,7 +112,7 @@ export default function WipePage() {
     setNowSec(Math.floor(Date.now() / 1000));
   }, []);
 
-  usePolling(refresh, 10000);
+  usePolling(refresh, 120000);
   usePolling(tickClock, 1000);
 
   const server = state?.server ?? null;

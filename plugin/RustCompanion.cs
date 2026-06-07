@@ -27,13 +27,16 @@ namespace Oxide.Plugins
             public string PluginSecret { get; set; } = "changeme";
 
             [JsonProperty("Update interval (seconds)")]
-            public float UpdateInterval { get; set; } = 2f;
+            public float UpdateInterval { get; set; } = 15f;
 
             [JsonProperty("Send player positions")]
             public bool SendPositions { get; set; } = true;
 
             [JsonProperty("Batch stat flush interval (seconds)")]
-            public float StatFlushInterval { get; set; } = 10f;
+            public float StatFlushInterval { get; set; } = 60f;
+
+            [JsonProperty("Balance flush interval (seconds)")]
+            public float BalanceFlushInterval { get; set; } = 120f;
 
             [JsonProperty("Map Image URL (overrides auto-render if set)")]
             public string MapImageUrl { get; set; } = "";
@@ -42,10 +45,10 @@ namespace Oxide.Plugins
             public float MapRenderWaitSeconds { get; set; } = 20f;
 
             [JsonProperty("Max map image dimension (px) before upload")]
-            public int MapMaxDimension { get; set; } = 2048;
+            public int MapMaxDimension { get; set; } = 1024;
 
             [JsonProperty("Map JPEG quality (1-100)")]
-            public int MapJpegQuality { get; set; } = 80;
+            public int MapJpegQuality { get; set; } = 65;
         }
 
         protected override void LoadConfig()
@@ -105,6 +108,7 @@ namespace Oxide.Plugins
         private void OnServerInitialized()
         {
             LoadConfig();
+            ApplyVercelSafeConfig();
 
             // Seed the event set once (entities that existed before load won't
             // fire OnEntitySpawned). This is the only full scan we ever do.
@@ -114,12 +118,48 @@ namespace Oxide.Plugins
             timer.Every(_cfg.UpdateInterval, SendLiveUpdate);
             timer.Every(_cfg.StatFlushInterval, FlushStats);
             timer.Every(60f, AccumulatePlaytime);
-            timer.Every(30f, SendBalances);
+            timer.Every(_cfg.BalanceFlushInterval, SendBalances);
             if (string.IsNullOrEmpty(_cfg.MapImageUrl))
                 timer.Once(60f, TryUploadMap);
             else
                 Puts($"[RustCompanion] Using configured map image URL.");
             Puts($"[RustCompanion] Streaming to {_cfg.DashboardUrl}");
+        }
+
+        private void ApplyVercelSafeConfig()
+        {
+            bool changed = false;
+            if (_cfg.UpdateInterval < 15f)
+            {
+                _cfg.UpdateInterval = 15f;
+                changed = true;
+            }
+            if (_cfg.StatFlushInterval < 60f)
+            {
+                _cfg.StatFlushInterval = 60f;
+                changed = true;
+            }
+            if (_cfg.BalanceFlushInterval < 120f)
+            {
+                _cfg.BalanceFlushInterval = 120f;
+                changed = true;
+            }
+            if (_cfg.MapMaxDimension > 1024)
+            {
+                _cfg.MapMaxDimension = 1024;
+                changed = true;
+            }
+            if (_cfg.MapJpegQuality > 65)
+            {
+                _cfg.MapJpegQuality = 65;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                SaveConfig();
+                Puts("[RustCompanion] Adjusted config to reduce Vercel request/transfer usage.");
+            }
         }
 
         [ConsoleCommand("ruststats.uploadmap")]

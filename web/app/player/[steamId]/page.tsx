@@ -56,7 +56,7 @@ export default function PlayerPage() {
     }
   }, [steamId]);
 
-  usePolling(refresh, 10000);
+  usePolling(refresh, 60000);
 
   const totals = profile?.[scope] ?? {};
   const gathered = (totals.wood ?? 0) + (totals.stone ?? 0) + (totals.metal_ore ?? 0) + (totals.sulfur_ore ?? 0);

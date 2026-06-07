@@ -82,7 +82,7 @@ export default function Home() {
     setNowSec(Math.floor(Date.now() / 1000));
   }, []);
 
-  usePolling(refresh, 5000);
+  usePolling(refresh, 60000);
   usePolling(tickClock, 1000);
 
   const server = state?.server ?? null;

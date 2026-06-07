@@ -86,7 +86,7 @@ export default function LeaderboardPage() {
     }
   }, [category, wipeScope, debouncedSearch, players.length]);
 
-  usePolling(fetchLeaderboard, 15000);
+  usePolling(fetchLeaderboard, 120000);
 
   const top3 = players.slice(0, 3);
   const activeCategory = CATEGORIES.find((c) => c.id === category) ?? CATEGORIES[0];

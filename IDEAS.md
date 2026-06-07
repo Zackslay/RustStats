@@ -19,6 +19,7 @@ economy). Prioritize features that exploit web↔game integration — others can
 - ✅ **"Hold the monument" wave defense** — `ApSiege.cs`: escalating NPC waves (scaling count/health/damage) at a random monument; clear all waves → reward vault + RP/Economics for defenders. Live-map "siege" event (orange pulsing `!`).
 - ✅ **Dynamic commodity prices** — ApAuction reports each sale (`OnApMarketSale`) → RustCompanion buffers/relays → `market_trades` table → `/market` page: live RP/unit price, 7-day change, volume, and a sparkline per commodity.
 - ⬜ **Starter questline / tutorial** — funnels new players into shop/market/bosses.
+- ⬜ **Physically scaling bosses (server-side)** — drive real in-world entity scale from per-tier `MarkerScale` so bigger map marker == bigger boss. Animals/simple entities scale cleanly via `transform.localScale` + network update (the "giant chicken" trick); humanoid Scientists are finicky (rig/anim/hitbox). Route: spawn a scalable creature boss (giant bear/boar) OR integrate EntityScaleManager (WhiteThunder), scaling the collider too so it stays hittable. Works on Oxide today (not Carbon-specific).
 
 ## 🌅 Future idea list
 - ⬜ **Faction / territory war (living world)** — NPC factions hold monuments; players tip the balance; territory shaded on the live map.

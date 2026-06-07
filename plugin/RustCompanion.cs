@@ -97,6 +97,10 @@ namespace Oxide.Plugins
         // entities) — that scan, run 4x every 2s, was the main source of lag.
         private readonly HashSet<BaseEntity> _trackedEvents = new();
 
+        // Player vending machines ("shops") tracked via spawn hooks for the
+        // dashboard's vending district. Read-only; sent throttled like monuments.
+        private readonly HashSet<BaseEntity> _trackedVending = new();
+
         // Live boss (set by the ApBoss plugin via hooks) — shown on the map.
         private BaseEntity _liveBoss;
         private string _liveBossLabel;
@@ -113,7 +117,10 @@ namespace Oxide.Plugins
             // Seed the event set once (entities that existed before load won't
             // fire OnEntitySpawned). This is the only full scan we ever do.
             foreach (var e in BaseNetworkable.serverEntities)
+            {
                 if (e is BaseEntity be && IsEventEntity(e)) _trackedEvents.Add(be);
+                if (e is VendingMachine vm && vm.OwnerID != 0) _trackedVending.Add(vm);
+            }
 
             timer.Every(_cfg.UpdateInterval, SendLiveUpdate);
             timer.Every(_cfg.StatFlushInterval, FlushStats);
@@ -405,6 +412,9 @@ namespace Oxide.Plugins
             // dashboard preserves the last set when this is null.
             _liveTick++;
             object monuments = (_liveTick % 15 == 1) ? (object)GetMonuments() : null;
+            // Vending "shops" — sent occasionally (offset from monuments); the
+            // dashboard preserves the last set when this is null.
+            object shops = (_liveTick % 15 == 8) ? (object)BuildShops() : null;
 
             // Server info
             payload["server"] = new
@@ -474,6 +484,7 @@ namespace Oxide.Plugins
             }
 
             payload["events"] = events;
+            payload["shops"] = shops;
 
             PostAsync("/api/plugin", payload);
         }
@@ -557,6 +568,24 @@ namespace Oxide.Plugins
         private void OnEntitySpawned(BaseNetworkable entity)
         {
             if (entity is BaseEntity be && IsEventEntity(entity)) _trackedEvents.Add(be);
+            if (entity is VendingMachine vm && vm.OwnerID != 0) _trackedVending.Add(vm);
+        }
+
+        // Player vending machines that have a name + are broadcasting (on the map).
+        private List<object> BuildShops()
+        {
+            _trackedVending.RemoveWhere(e => e == null || e.IsDestroyed);
+            var list = new List<object>();
+            foreach (var e in _trackedVending)
+            {
+                if (!(e is VendingMachine vm)) continue;
+                if (!vm.IsBroadcasting()) continue;
+                var name = string.IsNullOrEmpty(vm.shopName) ? "Shop" : vm.shopName;
+                var pos = vm.transform.position;
+                list.Add(new { x = pos.x, z = pos.z, name });
+                if (list.Count >= 100) break;
+            }
+            return list;
         }
 
         // ── Hooks: Deaths (players, animals, heli/bradley kills) ───────────────

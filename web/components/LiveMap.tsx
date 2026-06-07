@@ -13,6 +13,7 @@ interface Props {
   offX?: number;
   offZ?: number;
   deaths?: DeathMarker[];
+  shops?: { x: number; z: number; name: string }[];
   heat?: { x: number; z: number; w?: number }[];
   calibrating?: boolean;
   onCalibrate?: (latNorm: number, lngNorm: number) => void;
@@ -46,6 +47,7 @@ export default function LiveMap({
   offX = 0,
   offZ = 0,
   deaths = [],
+  shops = [],
   heat = [],
   calibrating = false,
   onCalibrate,
@@ -58,6 +60,7 @@ export default function LiveMap({
   const eventMarkersRef = useRef<import("leaflet").Marker[]>([]);
   const monumentMarkersRef = useRef<import("leaflet").Marker[]>([]);
   const deathMarkersRef = useRef<import("leaflet").Marker[]>([]);
+  const shopMarkersRef = useRef<import("leaflet").Marker[]>([]);
   const gridLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const heatLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
@@ -281,6 +284,24 @@ export default function LiveMap({
       deathMarkersRef.current.push(marker);
     }
   }, [deaths, leafletLoaded, rustToLatLng]);
+
+  // Vending shops layer
+  useEffect(() => {
+    if (!mapRef.current || !L) return;
+    const map = mapRef.current;
+    for (const m of shopMarkersRef.current) m.remove();
+    shopMarkersRef.current = [];
+    for (const shop of shops) {
+      const pos = rustToLatLng(shop.x, shop.z);
+      const icon = L.divIcon({
+        className: "",
+        html: `<div class="shop-marker">$<span class="shop-label">${escapeHtml(shop.name)}</span></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      shopMarkersRef.current.push(L.marker(pos, { icon, interactive: false, keyboard: false }).addTo(map));
+    }
+  }, [shops, leafletLoaded, rustToLatLng]);
 
   // Heatmap layer (binned colored cells from a list of world points)
   useEffect(() => {

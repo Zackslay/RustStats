@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ChevronDown, Crosshair, Flame, MapPinned, Settings, Shield, Skull, Users, X } from "lucide-react";
+import { Activity, ChevronDown, Crosshair, Flame, MapPinned, Settings, Shield, ShoppingCart, Skull, Users, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -39,6 +39,8 @@ export default function MapPage() {
   const [showDeaths, setShowDeaths] = useState(true);
   const [heat, setHeat] = useState<{ x: number; z: number; w?: number }[]>([]);
   const [heatMode, setHeatMode] = useState<"off" | "deaths" | "activity">("off");
+  const [shops, setShops] = useState<{ x: number; z: number; name: string }[]>([]);
+  const [showShops, setShowShops] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [showPlayers, setShowPlayers] = useState(true);
   const [showKills, setShowKills] = useState(false);
@@ -192,6 +194,19 @@ export default function MapPage() {
     }
   }, [heatMode]);
 
+  const fetchShops = useCallback(async () => {
+    if (!showShops) return;
+    try {
+      const res = await fetch("/api/shops");
+      if (res.ok) {
+        const data = await res.json();
+        setShops(data.shops ?? []);
+      }
+    } catch {
+      // Keep previous shops visible through transient failures.
+    }
+  }, [showShops]);
+
   const tickClock = useCallback(() => {
     setNowSec(Math.floor(Date.now() / 1000));
   }, []);
@@ -199,6 +214,7 @@ export default function MapPage() {
   usePolling(fetchState, POLL_INTERVAL);
   usePolling(fetchDeaths, showDeaths ? 60000 : 0);
   usePolling(fetchHeat, heatMode !== "off" ? 60000 : 0);
+  usePolling(fetchShops, showShops ? 60000 : 0);
   usePolling(tickClock, 1000);
 
   const rawMapUrl = state.server?.mapUrl ?? "";
@@ -301,6 +317,7 @@ export default function MapPage() {
             offX={offX}
             offZ={offZ}
             deaths={showDeaths ? deaths : []}
+            shops={showShops ? shops : []}
             heat={heatMode !== "off" ? heat : []}
             calibrating={calibrating}
             onCalibrate={onCalibrate}
@@ -337,6 +354,16 @@ export default function MapPage() {
             >
               <Activity className="h-3.5 w-3.5" aria-hidden="true" />
               Activity
+            </button>
+            <button
+              onClick={() => setShowShops((v) => !v)}
+              className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-semibold ${
+                showShops ? "border-emerald-500 bg-emerald-500 text-white" : "border-zinc-700 bg-black/75 text-zinc-300 hover:text-white"
+              }`}
+              title="Show player vending shops"
+            >
+              <ShoppingCart className="h-3.5 w-3.5" aria-hidden="true" />
+              Shops
             </button>
             <button
               onClick={() => setShowTools((v) => !v)}

@@ -104,6 +104,33 @@ export async function updateGameState(patch: Partial<GameState>): Promise<void> 
   );
 }
 
+// ── Vending shops (separate live_state key so /api/gamestate stays lean) ───────
+export interface Shop {
+  x: number;
+  z: number;
+  name: string;
+}
+
+export async function setShops(shops: Shop[]): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO live_state (key, value, updated_at)
+     VALUES ('shops', $1::jsonb, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [JSON.stringify(shops)]
+  );
+}
+
+export async function getShops(): Promise<Shop[]> {
+  try {
+    const pool = getPool();
+    const res = await pool.query(`SELECT value FROM live_state WHERE key = 'shops'`);
+    return res.rows.length > 0 ? (res.rows[0].value as Shop[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function mergePlayers(
   incoming: Record<string, PlayerPosition>
 ): Promise<void> {

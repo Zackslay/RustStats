@@ -3,8 +3,10 @@ import {
   getGameState,
   updateGameState,
   mergePlayers,
+  setShops,
   type ActiveEvent,
   type PlayerPosition,
+  type Shop,
 } from "@/lib/gameState";
 import { verifyPluginSecret } from "@/lib/pluginAuth";
 import {
@@ -117,6 +119,11 @@ export async function POST(req: NextRequest) {
         });
       })
     );
+  }
+
+  // ── Vending shops (sent occasionally; array present => replace) ───────────────
+  if (Array.isArray(body.shops)) {
+    await setShops(body.shops as Shop[]);
   }
 
   // ── Economy balances (money / RP) ────────────────────────────────────────────

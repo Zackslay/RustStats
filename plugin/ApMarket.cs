@@ -257,14 +257,14 @@ namespace Oxide.Plugins
         [ConsoleCommand("apmarket.close")]
         private void CcClose(ConsoleSystem.Arg arg)
         {
-            var p = arg.Player();
+            var p = arg.Connection?.player as BasePlayer;
             if (p != null) CuiHelper.DestroyUi(p, UiName);
         }
 
         [ConsoleCommand("apmarket.open")]
         private void CcOpen(ConsoleSystem.Arg arg)
         {
-            var p = arg.Player();
+            var p = arg.Connection?.player as BasePlayer;
             if (p == null) return;
             OpenUi(p, arg.GetInt(0, 0), "");
         }
@@ -272,7 +272,7 @@ namespace Oxide.Plugins
         [ConsoleCommand("apmarket.do")]
         private void CcDo(ConsoleSystem.Arg arg)
         {
-            var p = arg.Player();
+            var p = arg.Connection?.player as BasePlayer;
             if (p == null) return;
             string action = arg.GetString(0, "");
             string shortname = arg.GetString(1, "");

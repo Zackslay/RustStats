@@ -314,19 +314,19 @@ namespace Oxide.Plugins
         };
 
         [ConsoleCommand("apauction.close")]
-        private void CcClose(ConsoleSystem.Arg arg) { var p = arg.Player(); if (p != null) CuiHelper.DestroyUi(p, UiName); }
+        private void CcClose(ConsoleSystem.Arg arg) { var p = arg.Connection?.player as BasePlayer; if (p != null) CuiHelper.DestroyUi(p, UiName); }
 
         [ConsoleCommand("apauction.open")]
         private void CcOpen(ConsoleSystem.Arg arg)
         {
-            var p = arg.Player(); if (p == null) return;
+            var p = arg.Connection?.player as BasePlayer; if (p == null) return;
             OpenUi(p, arg.GetInt(0, 0), arg.GetString(1, "all"), "");
         }
 
         [ConsoleCommand("apauction.buy")]
         private void CcBuy(ConsoleSystem.Arg arg)
         {
-            var p = arg.Player(); if (p == null) return;
+            var p = arg.Connection?.player as BasePlayer; if (p == null) return;
             string status = BuyListing(p, arg.GetInt(0, -1));
             OpenUi(p, arg.GetInt(1, 0), arg.GetString(2, "all"), status);
         }
@@ -334,7 +334,7 @@ namespace Oxide.Plugins
         [ConsoleCommand("apauction.cancel")]
         private void CcCancel(ConsoleSystem.Arg arg)
         {
-            var p = arg.Player(); if (p == null) return;
+            var p = arg.Connection?.player as BasePlayer; if (p == null) return;
             string status = CancelListing(p, arg.GetInt(0, -1));
             OpenUi(p, arg.GetInt(1, 0), arg.GetString(2, "all"), status);
         }
@@ -342,7 +342,7 @@ namespace Oxide.Plugins
         [ConsoleCommand("apauction.list")]
         private void CcList(ConsoleSystem.Arg arg)
         {
-            var p = arg.Player(); if (p == null) return;
+            var p = arg.Connection?.player as BasePlayer; if (p == null) return;
             string status = int.TryParse(arg.GetString(0, ""), out var price)
                 ? ListHeld(p, price)
                 : "Enter a number for the price.";

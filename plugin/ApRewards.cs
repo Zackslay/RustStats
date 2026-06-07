@@ -17,7 +17,7 @@ namespace Oxide.Plugins
         [ConsoleCommand("aprp")]
         private void CcAprp(ConsoleSystem.Arg arg)
         {
-            var p = arg.Player();
+            var p = arg.Connection?.player as BasePlayer;
             // Server console / RCON (p == null) is always allowed; in-game needs perm.
             if (p != null && !permission.UserHasPermission(p.UserIDString, PermUse))
             {

@@ -34,9 +34,9 @@ namespace Oxide.Plugins
             [JsonProperty("Currency mode: serverrewards | economics | bank")] public string CurrencyMode { get; set; } = "serverrewards";
             [JsonProperty("Currency label (e.g. RP, coins, AP Points)")] public string CurrencyLabel { get; set; } = "RP";
             [JsonProperty("Bank plugin name (bank mode)")] public string BankPlugin { get; set; } = "BankSystem";
-            [JsonProperty("Bank deposit method")] public string BankDeposit { get; set; } = "Deposit";
-            [JsonProperty("Bank withdraw method")] public string BankWithdraw { get; set; } = "Withdraw";
-            [JsonProperty("Bank balance method")] public string BankBalance { get; set; } = "Balance";
+            [JsonProperty("Bank deposit method")] public string BankDeposit { get; set; } = "API_BankSystemDeposit";
+            [JsonProperty("Bank withdraw method")] public string BankWithdraw { get; set; } = "API_BankSystemWithdraw";
+            [JsonProperty("Bank balance method")] public string BankBalance { get; set; } = "API_BankSystemBalance";
             [JsonProperty("Allow buying")] public bool AllowBuy { get; set; } = true;
             [JsonProperty("Chat prefix")] public string ChatPrefix { get; set; } = "<color=#34d399>[Market]</color>";
             [JsonProperty("Prices (item shortname -> sell/buy)")]
@@ -314,7 +314,7 @@ namespace Oxide.Plugins
             switch (_cfg.CurrencyMode)
             {
                 case "economics": Economics?.Call("Deposit", p.UserIDString, (double)amount); break;
-                case "bank": Bank?.Call(_cfg.BankDeposit, p.userID, (double)amount); break;
+                case "bank": Bank?.Call(_cfg.BankDeposit, p.userID, amount); break;
                 default: ServerRewards?.Call("AddPoints", p.userID, amount); break;
             }
         }
@@ -349,7 +349,7 @@ namespace Oxide.Plugins
             switch (_cfg.CurrencyMode)
             {
                 case "economics": Economics?.Call("Withdraw", p.UserIDString, (double)amount); break;
-                case "bank": Bank?.Call(_cfg.BankWithdraw, p.userID, (double)amount); break;
+                case "bank": Bank?.Call(_cfg.BankWithdraw, p.userID, amount); break;
                 default: ServerRewards?.Call("TakePoints", p.userID, amount); break;
             }
             return true;

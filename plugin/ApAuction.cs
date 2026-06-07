@@ -1,19 +1,24 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Plugins;
+using Oxide.Game.Rust.Cui;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("ApAuction", "SlayStudios", "1.0.0")]
-    [Description("Player-to-player market: list items for RP, others buy them. Chat-based, persistent, escrowed.")]
+    [Info("ApAuction", "SlayStudios", "1.1.0")]
+    [Description("Player-to-player market with an in-game menu: list items for RP/points, others buy them.")]
     public class ApAuction : RustPlugin
     {
         [PluginReference] private Plugin ServerRewards, Economics;
+
+        private const string UiName = "apauction.ui";
+        private const int PerPage = 8;
 
         private Configuration _cfg;
         private StoredData _data;
@@ -24,9 +29,9 @@ namespace Oxide.Plugins
             [JsonProperty("Currency mode: serverrewards | economics | bank")] public string CurrencyMode { get; set; } = "serverrewards";
             [JsonProperty("Currency label (e.g. RP, coins, AP Points)")] public string CurrencyLabel { get; set; } = "RP";
             [JsonProperty("Bank plugin name (bank mode)")] public string BankPlugin { get; set; } = "BankSystem";
-            [JsonProperty("Bank deposit method")] public string BankDeposit { get; set; } = "Deposit";
-            [JsonProperty("Bank withdraw method")] public string BankWithdraw { get; set; } = "Withdraw";
-            [JsonProperty("Bank balance method")] public string BankBalance { get; set; } = "Balance";
+            [JsonProperty("Bank deposit method")] public string BankDeposit { get; set; } = "API_BankSystemDeposit";
+            [JsonProperty("Bank withdraw method")] public string BankWithdraw { get; set; } = "API_BankSystemWithdraw";
+            [JsonProperty("Bank balance method")] public string BankBalance { get; set; } = "API_BankSystemBalance";
             [JsonProperty("Max active listings per player")] public int MaxListings { get; set; } = 5;
             [JsonProperty("Max price per listing")] public int MaxPrice { get; set; } = 1000000;
             [JsonProperty("Listing fee (RP, taken when listing)")] public int ListingFee { get; set; } = 0;
@@ -81,7 +86,12 @@ namespace Oxide.Plugins
         }
 
         private void OnServerSave() => Save();
-        private void Unload() => Save();
+        private void Unload()
+        {
+            foreach (var p in BasePlayer.activePlayerList) CuiHelper.DestroyUi(p, UiName);
+            Save();
+        }
+        private void OnPlayerDisconnected(BasePlayer player, string reason) => CuiHelper.DestroyUi(player, UiName);
 
         private string Cur => _cfg.CurrencyLabel;
         private Plugin Bank => Interface.Oxide.RootPluginManager.GetPlugin(_cfg.BankPlugin) as Plugin;
@@ -96,9 +106,10 @@ namespace Oxide.Plugins
                 case "sell": MarketSell(player, args); break;
                 case "buy": MarketBuy(player, args); break;
                 case "cancel": MarketCancel(player, args); break;
-                case "mine": MarketMine(player); break;
+                case "mine": OpenUi(player, 0, "mine", ""); break;
                 case "help": MarketHelp(player); break;
-                default: MarketList(player, args); break;
+                case "chat": MarketList(player, args); break; // old text view
+                default: OpenUi(player, 0, "all", ""); break;
             }
         }
 
@@ -141,25 +152,36 @@ namespace Oxide.Plugins
             player.ChatMessage(sb.ToString());
         }
 
+        // Chat wrappers around the shared core actions.
         private void MarketSell(BasePlayer player, string[] args)
         {
-            if (args.Length < 2 || !int.TryParse(args[1], out var price) || price <= 0)
-            {
-                Msg(player, "Usage: hold an item, then /market sell <price>"); return;
-            }
-            if (price > _cfg.MaxPrice) { Msg(player, $"Max price is {_cfg.MaxPrice} {Cur}."); return; }
+            if (args.Length < 2 || !int.TryParse(args[1], out var price)) { Msg(player, "Usage: hold an item, then /market sell <price>"); return; }
+            Msg(player, ListHeld(player, price));
+        }
+
+        private void MarketBuy(BasePlayer player, string[] args)
+        {
+            if (args.Length < 2 || !int.TryParse(args[1], out var id)) { Msg(player, "Usage: /market buy <id>"); return; }
+            Msg(player, BuyListing(player, id));
+        }
+
+        private void MarketCancel(BasePlayer player, string[] args)
+        {
+            if (args.Length < 2 || !int.TryParse(args[1], out var id)) { Msg(player, "Usage: /market cancel <id>"); return; }
+            Msg(player, CancelListing(player, id));
+        }
+
+        // ── Core actions (shared by chat + UI), return a status string ───────────
+        private string ListHeld(BasePlayer player, int price)
+        {
+            if (price <= 0) return "Enter a price greater than 0.";
+            if (price > _cfg.MaxPrice) return $"Max price is {_cfg.MaxPrice} {Cur}.";
             if (_data.Listings.Count(l => l.SellerId == player.userID) >= _cfg.MaxListings)
-            {
-                Msg(player, $"You already have {_cfg.MaxListings} listings (the max)."); return;
-            }
-
+                return $"You already have {_cfg.MaxListings} listings (the max).";
             var held = player.GetActiveItem();
-            if (held == null) { Msg(player, "Hold the item you want to list."); return; }
-
-            if (_cfg.ListingFee > 0)
-            {
-                if (!TakePoints(player, _cfg.ListingFee)) { Msg(player, $"You need {_cfg.ListingFee} {Cur} for the listing fee."); return; }
-            }
+            if (held == null) return "Hold the item you want to list, then set a price.";
+            if (_cfg.ListingFee > 0 && !TakePoints(player, _cfg.ListingFee))
+                return $"You need {_cfg.ListingFee} {Cur} for the listing fee.";
 
             var listing = new Listing
             {
@@ -172,53 +194,152 @@ namespace Oxide.Plugins
                 Price = price,
                 ListedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             };
-
-            // Escrow: remove the exact held stack.
             held.RemoveFromContainer();
             held.Remove();
-
             _data.Listings.Add(listing);
             Save();
-            Msg(player, $"Listed {listing.Amount}x {DisplayName(listing.Shortname)} for <color=#fbbf24>{price}</color> {Cur} (#{listing.Id}).");
+            return $"Listed {listing.Amount}x {DisplayName(listing.Shortname)} for {price} {Cur} (#{listing.Id}).";
         }
 
-        private void MarketBuy(BasePlayer player, string[] args)
+        private string BuyListing(BasePlayer player, int id)
         {
-            if (args.Length < 2 || !int.TryParse(args[1], out var id)) { Msg(player, "Usage: /market buy <id>"); return; }
             var listing = _data.Listings.FirstOrDefault(l => l.Id == id);
-            if (listing == null) { Msg(player, "That listing no longer exists."); return; }
-            if (listing.SellerId == player.userID) { Msg(player, "That's your own listing — use /market cancel <id>."); return; }
+            if (listing == null) return "That listing no longer exists.";
+            if (listing.SellerId == player.userID) return "That's your own listing — cancel it instead.";
+            if (!TakePoints(player, listing.Price)) return $"Not enough {Cur}. Need {listing.Price}, have {GetBalance(player)}.";
 
-            if (!TakePoints(player, listing.Price))
-            {
-                Msg(player, $"Not enough {Cur}. You need {listing.Price}, have {GetBalance(player)}."); return;
-            }
-
-            // Pay the seller (works offline) and hand over the item.
             GivePoints(listing.SellerId, listing.Price);
             var item = ItemManager.CreateByName(listing.Shortname, listing.Amount, listing.SkinId);
             if (item != null) player.GiveItem(item, BaseEntity.GiveItemReason.PickedUp);
-
             _data.Listings.Remove(listing);
             Save();
 
-            Msg(player, $"Bought {listing.Amount}x {DisplayName(listing.Shortname)} for <color=#fbbf24>{listing.Price}</color> {Cur}.");
             var seller = BasePlayer.FindByID(listing.SellerId);
             seller?.ChatMessage($"{_cfg.ChatPrefix} {player.displayName} bought your {DisplayName(listing.Shortname)} for {listing.Price} {Cur}!");
+            return $"Bought {listing.Amount}x {DisplayName(listing.Shortname)} for {listing.Price} {Cur}.";
         }
 
-        private void MarketCancel(BasePlayer player, string[] args)
+        private string CancelListing(BasePlayer player, int id)
         {
-            if (args.Length < 2 || !int.TryParse(args[1], out var id)) { Msg(player, "Usage: /market cancel <id>"); return; }
             var listing = _data.Listings.FirstOrDefault(l => l.Id == id);
-            if (listing == null) { Msg(player, "That listing no longer exists."); return; }
-            if (listing.SellerId != player.userID && !player.IsAdmin) { Msg(player, "That isn't your listing."); return; }
-
+            if (listing == null) return "That listing no longer exists.";
+            if (listing.SellerId != player.userID && !player.IsAdmin) return "That isn't your listing.";
             var item = ItemManager.CreateByName(listing.Shortname, listing.Amount, listing.SkinId);
             if (item != null) player.GiveItem(item, BaseEntity.GiveItemReason.PickedUp);
             _data.Listings.Remove(listing);
             Save();
-            Msg(player, $"Reclaimed {listing.Amount}x {DisplayName(listing.Shortname)} (#{listing.Id}).");
+            return $"Reclaimed {listing.Amount}x {DisplayName(listing.Shortname)}.";
+        }
+
+        // ── UI ────────────────────────────────────────────────────────────────
+        private void OpenUi(BasePlayer player, int page, string tab, string status)
+        {
+            bool mine = tab == "mine";
+            var source = mine ? _data.Listings.Where(l => l.SellerId == player.userID).ToList() : _data.Listings;
+            int pages = Mathf.Max(1, Mathf.CeilToInt(source.Count / (float)PerPage));
+            page = Mathf.Clamp(page, 0, pages - 1);
+
+            CuiHelper.DestroyUi(player, UiName);
+            var c = new CuiElementContainer();
+
+            c.Add(new CuiPanel { Image = { Color = "0 0 0 0.75" }, RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" }, CursorEnabled = true }, "Overlay", UiName);
+            string panel = c.Add(new CuiPanel { Image = { Color = "0.10 0.10 0.12 0.98" }, RectTransform = { AnchorMin = "0.26 0.14", AnchorMax = "0.74 0.86" } }, UiName);
+
+            // Header
+            c.Add(new CuiPanel { Image = { Color = "0.55 0.40 0.90 0.95" }, RectTransform = { AnchorMin = "0 0.92", AnchorMax = "1 1" } }, panel);
+            c.Add(new CuiLabel { Text = { Text = "  PLAYER MARKET", FontSize = 18, Align = TextAnchor.MiddleLeft, Color = "1 1 1 1" }, RectTransform = { AnchorMin = "0 0.92", AnchorMax = "0.6 1" } }, panel);
+            c.Add(new CuiLabel { Text = { Text = $"{GetBalance(player)} {Cur}   ", FontSize = 13, Align = TextAnchor.MiddleRight, Color = "1 1 1 0.9" }, RectTransform = { AnchorMin = "0.5 0.92", AnchorMax = "0.92 1" } }, panel);
+            c.Add(new CuiButton { Button = { Command = "apauction.close", Color = "0 0 0 0.4" }, Text = { Text = "✕", FontSize = 16, Align = TextAnchor.MiddleCenter, Color = "1 1 1 1" }, RectTransform = { AnchorMin = "0.92 0.92", AnchorMax = "1 1" } }, panel);
+
+            // Tabs + sell-held input
+            c.Add(Btn("apauction.open 0 all", "All", mine ? "0.2 0.2 0.22 1" : "0.45 0.35 0.7 1", 0.02f, 0.15f, 0.865f, 0.91f), panel);
+            c.Add(Btn("apauction.open 0 mine", "Mine", mine ? "0.45 0.35 0.7 1" : "0.2 0.2 0.22 1", 0.155f, 0.285f, 0.865f, 0.91f), panel);
+            c.Add(new CuiLabel { Text = { Text = "Hold item, type price →", FontSize = 10, Align = TextAnchor.MiddleRight, Color = "0.65 0.65 0.7 1" }, RectTransform = { AnchorMin = "0.45 0.865", AnchorMax = "0.78 0.91" } }, panel);
+            c.Add(new CuiPanel { Image = { Color = "1 1 1 0.10" }, RectTransform = { AnchorMin = "0.79 0.865", AnchorMax = "0.98 0.91" } }, panel);
+            c.Add(new CuiElement
+            {
+                Parent = panel,
+                Components =
+                {
+                    new CuiInputFieldComponent { Command = "apauction.list", FontSize = 12, Align = TextAnchor.MiddleCenter, CharsLimit = 9, Color = "1 1 1 1", NeedsKeyboard = true },
+                    new CuiRectTransformComponent { AnchorMin = "0.79 0.865", AnchorMax = "0.98 0.91" }
+                }
+            });
+
+            // Rows
+            var items = source.Skip(page * PerPage).Take(PerPage).ToList();
+            if (items.Count == 0)
+                c.Add(new CuiLabel { Text = { Text = mine ? "You have no listings. Hold an item and type a price above." : "No active listings yet.", FontSize = 13, Align = TextAnchor.MiddleCenter, Color = "0.6 0.6 0.6 1" }, RectTransform = { AnchorMin = "0.05 0.45", AnchorMax = "0.95 0.6" } }, panel);
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                var l = items[i];
+                float top = 0.83f - i * 0.092f;
+                float bot = top - 0.082f;
+                if (i % 2 == 0)
+                    c.Add(new CuiPanel { Image = { Color = "1 1 1 0.03" }, RectTransform = { AnchorMin = $"0.02 {F(bot)}", AnchorMax = $"0.98 {F(top)}" } }, panel);
+
+                c.Add(new CuiLabel { Text = { Text = $"#{l.Id}  {l.Amount}x {DisplayName(l.Shortname)}", FontSize = 12, Align = TextAnchor.MiddleLeft, Color = "1 1 1 1" }, RectTransform = { AnchorMin = $"0.03 {F(bot)}", AnchorMax = $"0.50 {F(top)}" } }, panel);
+                c.Add(new CuiLabel { Text = { Text = $"{l.Price} {Cur}", FontSize = 11, Align = TextAnchor.MiddleCenter, Color = "0.98 0.85 0.4 1" }, RectTransform = { AnchorMin = $"0.50 {F(bot)}", AnchorMax = $"0.66 {F(top)}" } }, panel);
+                c.Add(new CuiLabel { Text = { Text = l.SellerName, FontSize = 10, Align = TextAnchor.MiddleCenter, Color = "0.7 0.7 0.75 1" }, RectTransform = { AnchorMin = $"0.66 {F(bot)}", AnchorMax = $"0.82 {F(top)}" } }, panel);
+
+                if (l.SellerId == player.userID)
+                    c.Add(Btn($"apauction.cancel {l.Id} {page} {tab}", "Cancel", "0.5 0.3 0.3 1", 0.83f, 0.97f, bot, top), panel);
+                else
+                    c.Add(Btn($"apauction.buy {l.Id} {page} {tab}", "Buy", "0.25 0.5 0.3 1", 0.83f, 0.97f, bot, top), panel);
+            }
+
+            // Footer
+            if (page > 0) c.Add(Btn($"apauction.open {page - 1} {tab}", "< Prev", "0.2 0.2 0.22 1", 0.03f, 0.16f, 0.02f, 0.085f), panel);
+            if (page < pages - 1) c.Add(Btn($"apauction.open {page + 1} {tab}", "Next >", "0.2 0.2 0.22 1", 0.84f, 0.97f, 0.02f, 0.085f), panel);
+            c.Add(new CuiLabel { Text = { Text = status.Length > 0 ? status : $"Page {page + 1}/{pages}  ·  {source.Count} listing(s)", FontSize = 11, Align = TextAnchor.MiddleCenter, Color = "0.8 0.75 0.95 1" }, RectTransform = { AnchorMin = "0.17 0.02", AnchorMax = "0.83 0.085" } }, panel);
+
+            CuiHelper.AddUi(player, c);
+        }
+
+        private static string F(float v) => v.ToString("0.####", CultureInfo.InvariantCulture);
+
+        private static CuiButton Btn(string cmd, string text, string color, float xMin, float xMax, float yMin, float yMax) => new()
+        {
+            Button = { Command = cmd, Color = color },
+            Text = { Text = text, FontSize = 11, Align = TextAnchor.MiddleCenter, Color = "1 1 1 1" },
+            RectTransform = { AnchorMin = $"{F(xMin)} {F(yMin)}", AnchorMax = $"{F(xMax)} {F(yMax)}" }
+        };
+
+        [ConsoleCommand("apauction.close")]
+        private void CcClose(ConsoleSystem.Arg arg) { var p = arg.Player(); if (p != null) CuiHelper.DestroyUi(p, UiName); }
+
+        [ConsoleCommand("apauction.open")]
+        private void CcOpen(ConsoleSystem.Arg arg)
+        {
+            var p = arg.Player(); if (p == null) return;
+            OpenUi(p, arg.GetInt(0, 0), arg.GetString(1, "all"), "");
+        }
+
+        [ConsoleCommand("apauction.buy")]
+        private void CcBuy(ConsoleSystem.Arg arg)
+        {
+            var p = arg.Player(); if (p == null) return;
+            string status = BuyListing(p, arg.GetInt(0, -1));
+            OpenUi(p, arg.GetInt(1, 0), arg.GetString(2, "all"), status);
+        }
+
+        [ConsoleCommand("apauction.cancel")]
+        private void CcCancel(ConsoleSystem.Arg arg)
+        {
+            var p = arg.Player(); if (p == null) return;
+            string status = CancelListing(p, arg.GetInt(0, -1));
+            OpenUi(p, arg.GetInt(1, 0), arg.GetString(2, "all"), status);
+        }
+
+        [ConsoleCommand("apauction.list")]
+        private void CcList(ConsoleSystem.Arg arg)
+        {
+            var p = arg.Player(); if (p == null) return;
+            string status = int.TryParse(arg.GetString(0, ""), out var price)
+                ? ListHeld(p, price)
+                : "Enter a number for the price.";
+            OpenUi(p, 0, "mine", status);
         }
 
         // ── Currency helpers ──────────────────────────────────────────────────
@@ -228,7 +349,7 @@ namespace Oxide.Plugins
             switch (_cfg.CurrencyMode)
             {
                 case "economics": Economics?.Call("Deposit", userId.ToString(), (double)amount); break;
-                case "bank": Bank?.Call(_cfg.BankDeposit, userId, (double)amount); break;
+                case "bank": Bank?.Call(_cfg.BankDeposit, userId, amount); break;
                 default: ServerRewards?.Call("AddPoints", userId, amount); break;
             }
         }
@@ -263,7 +384,7 @@ namespace Oxide.Plugins
             switch (_cfg.CurrencyMode)
             {
                 case "economics": Economics?.Call("Withdraw", p.UserIDString, (double)amount); break;
-                case "bank": Bank?.Call(_cfg.BankWithdraw, p.userID, (double)amount); break;
+                case "bank": Bank?.Call(_cfg.BankWithdraw, p.userID, amount); break;
                 default: ServerRewards?.Call("TakePoints", p.userID, amount); break;
             }
             return true;

@@ -15,7 +15,7 @@ namespace Oxide.Plugins
     [Description("Timed roaming boss event with tiers (NpcSpawn), loot + Economics/ServerRewards rewards and dashboard boss tracking")]
     public class ApBoss : RustPlugin
     {
-        [PluginReference] private Plugin NpcSpawn, Economics, ServerRewards;
+        [PluginReference] private Plugin NpcSpawn, Economics, ServerRewards, EntityScaleManager;
 
         // ── Config ────────────────────────────────────────────────────────────
         private Configuration _cfg;
@@ -71,6 +71,9 @@ namespace Oxide.Plugins
             [JsonProperty("Boss spawn banner text colour (RGBA)")] public string BossSpawnBannerText { get; set; } = "1 1 1 1";
 
             [JsonProperty("Report boss kills to dashboard (RustCompanion)")] public bool ReportToDashboard { get; set; } = true;
+
+            [JsonProperty("Apply physical (in-world) boss scaling from MarkerScale")] public bool PhysicalScaling { get; set; } = true;
+            [JsonProperty("Physical scale multiplier (x MarkerScale)")] public float PhysicalScaleMultiplier { get; set; } = 1f;
 
             [JsonProperty("Boss tiers")] public List<BossTier> Tiers { get; set; } = new()
             {
@@ -178,6 +181,9 @@ namespace Oxide.Plugins
             _boss = npc;
             _bossNetId = npc.net.ID.Value;
             _tier = tier;
+
+            // Make the boss physically bigger in-world to match its tier/marker.
+            ApplyPhysicalScale(npc, tier.MarkerScale);
 
             // Let the dashboard show a live boss marker (RustCompanion relays it).
             Interface.CallHook("OnApBossSpawned", _boss as BaseEntity, tier.Name, tier.MarkerScale);
@@ -347,6 +353,34 @@ namespace Oxide.Plugins
 
         // ── Helpers ───────────────────────────────────────────────────────────
         private static bool Alive(BaseEntity e) => e != null && !e.IsDestroyed;
+
+        // Drive the boss's real in-world size from its tier MarkerScale. Prefers
+        // EntityScaleManager (handles client replication + collider resize for the
+        // finicky humanoid case); falls back to a direct transform scale + network
+        // update. Server-side scaling is supported by Rust (the "giant" trick) —
+        // EntityScaleManager just makes it reliable for player-type NPCs.
+        private void ApplyPhysicalScale(BaseEntity ent, float markerScale)
+        {
+            if (!_cfg.PhysicalScaling || ent == null) return;
+            float scale = markerScale * Mathf.Max(0.01f, _cfg.PhysicalScaleMultiplier);
+            if (scale <= 0f || Mathf.Approximately(scale, 1f)) return;
+
+            if (EntityScaleManager != null)
+            {
+                EntityScaleManager.Call("API_ScaleEntity", ent, scale);
+                return;
+            }
+
+            try
+            {
+                ent.transform.localScale = Vector3.one * scale;
+                ent.SendNetworkUpdateImmediate();
+            }
+            catch (Exception ex)
+            {
+                PrintWarning($"[ApBoss] Physical scaling failed: {ex.Message} (install EntityScaleManager for reliable NPC scaling).");
+            }
+        }
 
         private void ShowBossBanner(BossTier tier, string grid)
         {

@@ -12,7 +12,7 @@ namespace Oxide.Plugins
     [Description("A roaming, invulnerable merchant NPC shown on the live map; /trade nearby for a daily bonus + the shop")]
     public class ApMerchant : RustPlugin
     {
-        [PluginReference] private Plugin NpcSpawn, ServerRewards, ShopController;
+        [PluginReference] private Plugin NpcSpawn, ServerRewards, ApAuction;
 
         private Configuration _cfg;
 
@@ -25,8 +25,6 @@ namespace Oxide.Plugins
             [JsonProperty("Speed")] public float Speed { get; set; } = 4.5f;
             [JsonProperty("Trade range (meters)")] public float TradeRange { get; set; } = 15f;
             [JsonProperty("Daily trade bonus (RP, 0 = off)")] public int DailyBonus { get; set; } = 50;
-            [JsonProperty("Shop plugin name")] public string ShopPlugin { get; set; } = "ShopController";
-            [JsonProperty("Shop open method")] public string ShopOpenMethod { get; set; } = "CMDOpenShop";
             [JsonProperty("Chat prefix")] public string ChatPrefix { get; set; } = "<color=#fbbf24>[Merchant]</color>";
             [JsonProperty("Announce relocations")] public bool Announce { get; set; } = true;
         }
@@ -80,11 +78,9 @@ namespace Oxide.Plugins
                 }
             }
 
-            // Open the shop (best effort; players can also just use /shop).
-            bool opened = false;
-            try { if (ShopController != null) { ShopController.Call(_cfg.ShopOpenMethod, player, "shop", new string[0]); opened = true; } }
-            catch (Exception ex) { PrintWarning($"[ApMerchant] shop open failed: {ex.Message}"); }
-            if (!opened) Msg(player, "Use /shop to browse the merchant's wares.");
+            // Open the private player-to-player market (ApAuction), not the vendor shop.
+            if (ApAuction != null) ApAuction.Call("OpenMarketUi", player);
+            else Msg(player, "The market is unavailable right now. Try /market.");
         }
 
         [ChatCommand("merchant")]

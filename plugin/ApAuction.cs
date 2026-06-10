@@ -82,7 +82,11 @@ namespace Oxide.Plugins
         {
             LoadConfig();
             Load();
-            Puts($"[ApAuction] {_data.Listings.Count} active listings.");
+            Puts($"[ApAuction] {_data.Listings.Count} active listings. Currency mode: {_cfg.CurrencyMode}.");
+            if (_cfg.CurrencyMode == "serverrewards" && ServerRewards == null)
+                PrintError("[ApAuction] CurrencyMode is 'serverrewards' but ServerRewards is NOT loaded — buys/sells will not move points. Load ServerRewards or change the currency mode.");
+            if (_cfg.CurrencyMode == "economics" && Economics == null)
+                PrintError("[ApAuction] CurrencyMode is 'economics' but Economics is NOT loaded.");
         }
 
         private void OnServerSave() => Save();
@@ -412,11 +416,12 @@ namespace Oxide.Plugins
             if (GetBalance(p) < amount) return false;
             switch (_cfg.CurrencyMode)
             {
-                case "economics": Economics?.Call("Withdraw", p.UserIDString, (double)amount); break;
-                case "bank": Bank?.Call(_cfg.BankWithdraw, p.userID, amount); break;
-                default: ServerRewards?.Call("TakePoints", p.userID, amount); break;
+                case "economics": return Economics?.Call("Withdraw", p.UserIDString, (double)amount) != null;
+                case "bank": Bank?.Call(_cfg.BankWithdraw, p.userID, amount); return true;
+                // ServerRewards.TakePoints(object, int, string="") — pass all 3 args;
+                // omitting the optional reason can make the cross-plugin Call no-op.
+                default: return ServerRewards?.Call("TakePoints", p.userID, amount, "Market purchase") != null;
             }
-            return true;
         }
 
         private static string DisplayName(string shortname)

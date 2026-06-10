@@ -12,7 +12,7 @@ economy). Prioritize features that exploit web↔game integration — others can
 - ✅ **Death heatmap** — `/api/heatmap` + Deaths Heat toggle on the map (binned cells from kill_log).
 - ✅ **Activity heatmaps** — throttled position sampling into heat_grid; Activity toggle on the map.
 - ✅ **Player timeline on profiles** — "Joined" date + existing badge/milestone system.
-- ✅ **Roaming merchant NPC** — `ApMerchant.cs`: invulnerable passive trader, relocates every 30 min, shown on the live map ($ event marker); `/trade` nearby gives a daily RP bonus + opens the shop; `/merchant` reports its grid.
+- ✅ **Roaming merchant NPC** — `ApMerchant.cs`: invulnerable passive trader, relocates every 30 min, shown on the live map ($ event marker); `/trade` nearby gives a daily RP bonus + opens the **private player market** (ApAuction); `/merchant` reports its grid.
 - ✅ **Base vending district** — `RustCompanion` relays broadcasting player vending machines → `/api/shops` → Shops toggle on the map ($ markers, name on hover).
 
 ## ⏭️ Secondary next up
@@ -34,6 +34,16 @@ economy). Prioritize features that exploit web↔game integration — others can
 - ⬜ **Crafting commissions** — players post resource requests + RP bounty; others fulfill.
 - ⬜ **First-24h boost** — accelerated early progression for new players.
 - ⬜ **Random world modifiers** — rotating buffs ("Double Gather Hour", "Boss Frenzy") with dashboard countdowns.
+21. ⬜ **Event crowdfunding** — the community pools RP to trigger a custom event ("fund a Heli night").
+27. ⬜ **Earthquake** — a terrain hazard opens new resource fissures at a grid (dashboard-flagged).
+30. ⬜ **Migrating herds** — large animal herds roam a dashboard-shown route (hunting goldmine).
+35. ⬜ **Funded town vendor** — a community shop whose stock improves as players donate.
+36. ⬜ **"What spawns next" poll** — a web vote picks the next boss/event to spawn in-game.
+37. ⬜ **Anonymous gift drops** — send RP/items to a random new player; kindness leaderboard.
+
+38. ⬜ **Server mascot** — a community-named roaming safe-zone animal; feeding it grants a server buff.
+42. ⬜ **Gather analytics** — personal resources/hour graphs and best-biome breakdown.
+47. ⬜ **NPC faction reputation** — befriend or anger factions; reputation shifts their vendor prices and aggression.
 
 ---
 
@@ -131,7 +141,6 @@ economy). Prioritize features that exploit web↔game integration — others can
 18. ⬜ **Public stockpile** — donate to a shared vault that funds server events; donors get perks.
 19. ⬜ **Bank heist event** — a vault fills with RP over time; crack it (NPC-guarded) for the pot.
 20. ⬜ **Pawn-shop sink** — sell junk for RP on a daily diminishing-returns curve (anti-flood).
-21. ⬜ **Event crowdfunding** — the community pools RP to trigger a custom event ("fund a Heli night").
 
 ### Progression & identity
 22. ⬜ **Auto playstyle tags** — the dashboard infers Sniper / Brawler / Farmer from your stats and badges you.
@@ -141,33 +150,26 @@ economy). Prioritize features that exploit web↔game integration — others can
 26. ⬜ **Rival matchmaking** — paired with a similar-stat player; weekly head-to-head scorecard on the site.
 
 ### Live events & world state
-27. ⬜ **Earthquake** — a terrain hazard opens new resource fissures at a grid (dashboard-flagged).
 28. ⬜ **Airdrop bidding war** — players bid RP for a head start on a contested supply drop.
 29. ⬜ **Eclipse** — minutes of darkness; NPCs buffed, gather doubled (risk/reward).
-30. ⬜ **Migrating herds** — large animal herds roam a dashboard-shown route (hunting goldmine).
 31. ⬜ **Wildfire spread** — fire propagates across a biome; extinguish it for a community reward.
 32. ⬜ **Power-grid puzzle** — restore power to a dark monument to unlock its loot server-wide.
 
 ### Community & social
 33. ⬜ **Auto server newspaper** — a weekly dashboard recap (biggest kills, richest, drama).
 34. ⬜ **Co-op build contracts** — post a build job; contributors split an RP cut.
-35. ⬜ **Funded town vendor** — a community shop whose stock improves as players donate.
-36. ⬜ **"What spawns next" poll** — a web vote picks the next boss/event to spawn in-game.
-37. ⬜ **Anonymous gift drops** — send RP/items to a random new player; kindness leaderboard.
-38. ⬜ **Server mascot** — a community-named roaming safe-zone animal; feeding it grants a server buff.
+
 
 ### QoL & dashboard tools
 39. ⬜ **Upkeep tracker** — your TC upkeep/decay timer on the site with low-resource alerts.
 40. ⬜ **Rescue beacon** — drop a beacon when stuck; players/admins see it on the live map.
 41. ⬜ **Loot-table browser** — a searchable "what drops from X" reference on the dashboard.
-42. ⬜ **Gather analytics** — personal resources/hour graphs and best-biome breakdown.
 43. ⬜ **Boss-run scheduler** — a web tool to schedule a co-op boss run; pings the sign-ups.
 
 ### Signature / "not like the others"
 44. ⬜ **Escaping world boss** — each time it survives its timer it grows stronger/bigger (ties into ApBoss scaling); tracked live on the dashboard.
 45. ⬜ **Pity timer** — a guaranteed rare drop after N unlucky boss kills, tracked on your profile.
 46. ⬜ **Server doom clock** — failed events advance a clock; at zero a global hard event fires (shared stakes).
-47. ⬜ **NPC faction reputation** — befriend or anger factions; reputation shifts their vendor prices and aggression.
 48. ⬜ **Death echoes** — replay-ghost markers of past notable kills/deaths on the map, each with its story.
 49. ⬜ **PvE control points** — clear and hold a monument to claim it for your team, earning passive RP.
 50. ⬜ **Cross-wipe meta-campaign** — each wipe is a "chapter" with a server objective; progress unlocks permanent dashboard lore/perks.

@@ -350,7 +350,8 @@ namespace Oxide.Plugins
             {
                 case "economics": Economics?.Call("Withdraw", p.UserIDString, (double)amount); break;
                 case "bank": Bank?.Call(_cfg.BankWithdraw, p.userID, amount); break;
-                default: ServerRewards?.Call("TakePoints", p.userID, amount); break;
+                // Pass ServerRewards' optional 3rd "reason" arg — omitting it can make the Call no-op.
+                default: ServerRewards?.Call("TakePoints", p.userID, amount, "Shop purchase"); break;
             }
             return true;
         }

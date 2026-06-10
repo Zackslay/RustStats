@@ -64,6 +64,7 @@ namespace Oxide.Plugins
 
             [JsonProperty("Show boss spawn banner UI")] public bool ShowBossSpawnBanner { get; set; } = true;
             [JsonProperty("Boss spawn banner duration (seconds)")] public float BossSpawnBannerSeconds { get; set; } = 15f;
+            [JsonProperty("Boss spawn banner fade (seconds)")] public float BossSpawnBannerFade { get; set; } = 0.4f;
             [JsonProperty("Boss spawn banner title")] public string BossSpawnBannerTitle { get; set; } = "BOSS EVENT ACTIVE";
             [JsonProperty("Boss spawn banner subtitle")] public string BossSpawnBannerSubtitle { get; set; } = "Hunt it down for rewards";
             [JsonProperty("Boss spawn banner background colour (RGBA)")] public string BossSpawnBannerBackground { get; set; } = "0.08 0.02 0.02 0.92";
@@ -130,8 +131,12 @@ namespace Oxide.Plugins
             if (!_cfg.ShowBossSpawnBanner || !Alive(_boss) || _tier == null) return;
             timer.Once(2f, () =>
             {
-                if (player != null && player.IsConnected && Alive(_boss) && _tier != null)
-                    ShowBossBanner(player, _tier, _bossGrid ?? GridFromPos(_boss.transform.position));
+                if (player == null || !player.IsConnected || !Alive(_boss) || _tier == null) return;
+                ShowBossBanner(player, _tier, _bossGrid ?? GridFromPos(_boss.transform.position));
+                // Late joiners get their own auto-clear (the shared spawn timer
+                // may have already elapsed), so the banner doesn't linger.
+                float secs = Mathf.Max(1f, _cfg.BossSpawnBannerSeconds);
+                timer.Once(secs, () => { if (player != null && player.IsConnected) CuiHelper.DestroyUi(player, BossBannerUi); });
             });
         }
 
@@ -400,19 +405,23 @@ namespace Oxide.Plugins
 
             CuiHelper.DestroyUi(player, BossBannerUi);
 
+            float fade = Mathf.Max(0f, _cfg.BossSpawnBannerFade);
+
             var elements = new CuiElementContainer();
             elements.Add(new CuiPanel
             {
-                Image = { Color = _cfg.BossSpawnBannerBackground },
+                Image = { Color = _cfg.BossSpawnBannerBackground, FadeIn = fade },
                 RectTransform = { AnchorMin = "0.285 0.905", AnchorMax = "0.715 0.985" },
-                CursorEnabled = false
+                CursorEnabled = false,
+                FadeOut = fade
             }, "Overlay", BossBannerUi);
 
             elements.Add(new CuiPanel
             {
-                Image = { Color = _cfg.BossSpawnBannerAccent },
+                Image = { Color = _cfg.BossSpawnBannerAccent, FadeIn = fade },
                 RectTransform = { AnchorMin = "0 0", AnchorMax = "0.018 1" },
-                CursorEnabled = false
+                CursorEnabled = false,
+                FadeOut = fade
             }, BossBannerUi);
 
             elements.Add(new CuiLabel
@@ -422,9 +431,11 @@ namespace Oxide.Plugins
                     Text = _cfg.BossSpawnBannerTitle,
                     FontSize = 13,
                     Align = TextAnchor.UpperLeft,
-                    Color = _cfg.BossSpawnBannerAccent
+                    Color = _cfg.BossSpawnBannerAccent,
+                    FadeIn = fade
                 },
-                RectTransform = { AnchorMin = "0.045 0.58", AnchorMax = "0.62 0.92" }
+                RectTransform = { AnchorMin = "0.045 0.58", AnchorMax = "0.62 0.92" },
+                FadeOut = fade
             }, BossBannerUi);
 
             elements.Add(new CuiLabel
@@ -434,9 +445,11 @@ namespace Oxide.Plugins
                     Text = $"{tier.Name} spawned at grid {grid}",
                     FontSize = 18,
                     Align = TextAnchor.MiddleLeft,
-                    Color = _cfg.BossSpawnBannerText
+                    Color = _cfg.BossSpawnBannerText,
+                    FadeIn = fade
                 },
-                RectTransform = { AnchorMin = "0.045 0.16", AnchorMax = "0.74 0.66" }
+                RectTransform = { AnchorMin = "0.045 0.16", AnchorMax = "0.74 0.66" },
+                FadeOut = fade
             }, BossBannerUi);
 
             elements.Add(new CuiLabel
@@ -446,9 +459,11 @@ namespace Oxide.Plugins
                     Text = _cfg.BossSpawnBannerSubtitle,
                     FontSize = 11,
                     Align = TextAnchor.LowerLeft,
-                    Color = "0.82 0.82 0.82 1"
+                    Color = "0.82 0.82 0.82 1",
+                    FadeIn = fade
                 },
-                RectTransform = { AnchorMin = "0.045 0.04", AnchorMax = "0.74 0.26" }
+                RectTransform = { AnchorMin = "0.045 0.04", AnchorMax = "0.74 0.26" },
+                FadeOut = fade
             }, BossBannerUi);
 
             elements.Add(new CuiLabel
@@ -458,9 +473,11 @@ namespace Oxide.Plugins
                     Text = grid,
                     FontSize = 24,
                     Align = TextAnchor.MiddleCenter,
-                    Color = _cfg.BossSpawnBannerText
+                    Color = _cfg.BossSpawnBannerText,
+                    FadeIn = fade
                 },
-                RectTransform = { AnchorMin = "0.76 0.12", AnchorMax = "0.96 0.86" }
+                RectTransform = { AnchorMin = "0.76 0.12", AnchorMax = "0.96 0.86" },
+                FadeOut = fade
             }, BossBannerUi);
 
             CuiHelper.AddUi(player, elements);

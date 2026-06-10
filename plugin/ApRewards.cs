@@ -68,7 +68,7 @@ namespace Oxide.Plugins
                 foreach (var pl in BasePlayer.activePlayerList)
                 {
                     if (action == "add") ServerRewards.Call("AddPoints", pl.userID, amount);
-                    else if (action == "take") ServerRewards.Call("TakePoints", pl.userID, amount);
+                    else if (action == "take") ServerRewards.Call("TakePoints", pl.userID, amount, "aprp");
                     else { reply("'all' only supports add/take."); return; }
                     n++;
                 }
@@ -90,7 +90,7 @@ namespace Oxide.Plugins
                     reply($"Added {amount} RP to {name}.");
                     break;
                 case "take":
-                    ServerRewards.Call("TakePoints", id, amount);
+                    ServerRewards.Call("TakePoints", id, amount, "aprp");
                     reply($"Took {amount} RP from {name}.");
                     break;
                 case "check":

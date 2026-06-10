@@ -78,19 +78,31 @@ namespace Oxide.Plugins
             if (_data.Players == null) _data.Players = new Dictionary<ulong, Progress>();
         }
 
-        private void Save() => Interface.Oxide.DataFileSystem.WriteObject("ApQuests", _data);
+        private bool _dirty;
+        private void Save() { Interface.Oxide.DataFileSystem.WriteObject("ApQuests", _data); _dirty = false; }
+        private void SaveIfDirty() { if (_dirty) Save(); }
 
         private void OnServerInitialized()
         {
             LoadConfig();
             Load();
+            // Progress is buffered in memory and flushed periodically (not on every
+            // gather tick) to keep the hot path off the disk.
+            timer.Every(120f, SaveIfDirty);
             Puts($"[ApQuests] {_cfg.Quests.Count} starter quests loaded.");
         }
 
+        private void OnServerSave() => SaveIfDirty();
+        private void OnPlayerDisconnected(BasePlayer player, string reason) => SaveIfDirty();
+
         private void Unload()
         {
-            foreach (var p in BasePlayer.activePlayerList) CuiHelper.DestroyUi(p, UiName);
-            Save();
+            foreach (var p in BasePlayer.activePlayerList)
+            {
+                CuiHelper.DestroyUi(p, UiName);
+                CuiHelper.DestroyUi(p, ToastUi);
+            }
+            SaveIfDirty();
         }
 
         private Progress Get(ulong id)
@@ -164,11 +176,12 @@ namespace Oxide.Plugins
             if (q.Type == "gather" && !string.Equals(q.Shortname, shortname, StringComparison.OrdinalIgnoreCase)) return;
 
             prog.Count += amount;
-            if (prog.Count < q.Target) { Save(); RefreshIfOpen(player); return; }
+            if (prog.Count < q.Target) { _dirty = true; return; } // buffer; flushed periodically
 
-            // Step complete → reward + advance.
+            // Step complete → reward + advance (save immediately so rewards survive a crash).
             if (q.Reward > 0) ServerRewards?.Call("AddPoints", player.userID, q.Reward);
             Msg(player, $"✔ <color=#34d399>{q.Title}</color> complete! +{q.Reward} {_cfg.CurrencyLabel}");
+            Toast(player, $"Quest complete: {q.Title}  (+{q.Reward} {_cfg.CurrencyLabel})");
             prog.Step++;
             prog.Count = 0;
 
@@ -177,6 +190,7 @@ namespace Oxide.Plugins
                 prog.Done = true;
                 if (_cfg.FinalBonus > 0) ServerRewards?.Call("AddPoints", player.userID, _cfg.FinalBonus);
                 Msg(player, $"🎓 You finished the starter questline! Bonus +{_cfg.FinalBonus} {_cfg.CurrencyLabel}. Good luck out there.");
+                Toast(player, $"🎓 Starter questline complete!  (+{_cfg.FinalBonus} {_cfg.CurrencyLabel})");
                 CuiHelper.DestroyUi(player, UiName);
             }
             Save();
@@ -185,6 +199,35 @@ namespace Oxide.Plugins
 
         // ── UI ────────────────────────────────────────────────────────────────────
         private readonly HashSet<ulong> _open = new();
+        private const string ToastUi = "ApQuests.Toast";
+
+        // Brief on-screen confirmation when a step/the line completes.
+        private void Toast(BasePlayer player, string text)
+        {
+            if (player == null || !player.IsConnected) return;
+            CuiHelper.DestroyUi(player, ToastUi);
+            var c = new CuiElementContainer();
+            c.Add(new CuiPanel
+            {
+                Image = { Color = "0.10 0.28 0.18 0.95", FadeIn = 0.3f },
+                RectTransform = { AnchorMin = "0.32 0.80", AnchorMax = "0.68 0.85" },
+                FadeOut = 0.4f
+            }, "Overlay", ToastUi);
+            c.Add(new CuiPanel
+            {
+                Image = { Color = "0.20 0.80 0.45 1", FadeIn = 0.3f },
+                RectTransform = { AnchorMin = "0 0", AnchorMax = "0.012 1" },
+                FadeOut = 0.4f
+            }, ToastUi);
+            c.Add(new CuiLabel
+            {
+                Text = { Text = text, FontSize = 13, Align = TextAnchor.MiddleCenter, Color = "1 1 1 1", FadeIn = 0.3f },
+                RectTransform = { AnchorMin = "0.035 0", AnchorMax = "0.97 1" },
+                FadeOut = 0.4f
+            }, ToastUi);
+            CuiHelper.AddUi(player, c);
+            timer.Once(4f, () => { if (player != null && player.IsConnected) CuiHelper.DestroyUi(player, ToastUi); });
+        }
 
         [ChatCommand("quests")]
         private void CmdQuests(BasePlayer player, string command, string[] args)

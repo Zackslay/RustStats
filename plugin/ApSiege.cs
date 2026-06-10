@@ -6,6 +6,7 @@ using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Libraries;
 using Oxide.Core.Plugins;
+using Oxide.Game.Rust.Cui;
 using UnityEngine;
 
 namespace Oxide.Plugins
@@ -53,6 +54,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Chat prefix")] public string ChatPrefix { get; set; } = "<color=#f97316>[SIEGE]</color>";
             [JsonProperty("Announce")] public bool Announce { get; set; } = true;
+            [JsonProperty("Show on-screen banner")] public bool ShowBanner { get; set; } = true;
+            [JsonProperty("Banner duration (seconds)")] public float BannerSeconds { get; set; } = 8f;
+            [JsonProperty("Banner fade (seconds)")] public float BannerFade { get; set; } = 0.4f;
             [JsonProperty("Discord webhook URL (optional)")] public string DiscordWebhook { get; set; } = "";
         }
 
@@ -77,6 +81,8 @@ namespace Oxide.Plugins
         private readonly HashSet<ulong> _aliveNpcs = new();
         private readonly HashSet<ulong> _participants = new();
         private Timer _waveTimeout;
+        private Timer _bannerTimer;
+        private const string BannerUi = "ApSiege.Banner";
 
         private void OnServerInitialized()
         {
@@ -90,7 +96,12 @@ namespace Oxide.Plugins
             Puts($"[ApSiege] Ready. {_cfg.Waves} waves, every {_cfg.IntervalMinutes} min.");
         }
 
-        private void Unload() => EndSiege(false, true);
+        private void Unload()
+        {
+            _bannerTimer?.Destroy();
+            foreach (var p in BasePlayer.activePlayerList) CuiHelper.DestroyUi(p, BannerUi);
+            EndSiege(false, true);
+        }
 
         [ChatCommand("apsiege")]
         private void CmdApSiege(BasePlayer player, string command, string[] args)
@@ -146,9 +157,20 @@ namespace Oxide.Plugins
                 if (npc != null && npc.net != null) _aliveNpcs.Add(npc.net.ID.Value);
             }
 
+            // If NpcSpawn produced nothing, don't stall waiting on a kill that can't
+            // come — abort the siege cleanly instead of hanging until the timeout.
+            if (_aliveNpcs.Count == 0)
+            {
+                PrintError("[ApSiege] Wave spawned 0 NPCs (NpcSpawn issue) — aborting siege.");
+                if (_cfg.Announce) Broadcast($"The siege at {_monumentName} fizzled out.");
+                EndSiege(false, false);
+                return;
+            }
+
             Interface.CallHook("OnApSiegeUpdated", $"Siege: {_monumentName} (Wave {_wave}/{_cfg.Waves})");
             if (_cfg.Announce)
                 Broadcast($"⚔️ Wave <color=#f97316>{_wave}/{_cfg.Waves}</color> — <color=#fff>{count}</color> hostiles incoming at {_monumentName}!");
+            ShowSiegeBanner($"SIEGE — {_monumentName}", $"Wave {_wave}/{_cfg.Waves} · {count} hostiles");
 
             _waveTimeout?.Destroy();
             _waveTimeout = timer.Once(_cfg.WaveTimeoutSeconds, () =>
@@ -198,6 +220,7 @@ namespace Oxide.Plugins
                 Broadcast($"🏆 The siege at <color=#fbbf24>{_monumentName}</color> was repelled! A reward vault dropped at {_grid}.");
                 SendDiscord($"🏆 **Siege** at **{_monumentName}** completed — {rewarded.Count} defenders rewarded.");
             }
+            ShowSiegeBanner("SIEGE REPELLED", $"{_monumentName} held · vault at {_grid}");
             EndSiege(true, false);
         }
 
@@ -215,7 +238,70 @@ namespace Oxide.Plugins
             _aliveNpcs.Clear();
             _participants.Clear();
             _active = false;
+            // Keep the closing banner up briefly (Victory sets one) but clear any
+            // standing wave banner timer; the per-banner timer will remove the UI.
             Interface.CallHook("OnApSiegeEnded");
+        }
+
+        private void OnPlayerConnected(BasePlayer player)
+        {
+            if (!_cfg.ShowBanner || !_active || player == null) return;
+            timer.Once(2f, () =>
+            {
+                if (player != null && player.IsConnected && _active)
+                    ShowSiegeBanner(player, $"SIEGE — {_monumentName}", $"Wave {_wave}/{_cfg.Waves} in progress");
+            });
+        }
+
+        // ── Banner UI ──────────────────────────────────────────────────────────
+        private void ShowSiegeBanner(string title, string subtitle)
+        {
+            if (!_cfg.ShowBanner) return;
+            foreach (var p in BasePlayer.activePlayerList) ShowSiegeBanner(p, title, subtitle);
+            _bannerTimer?.Destroy();
+            _bannerTimer = timer.Once(Mathf.Max(1f, _cfg.BannerSeconds), DestroySiegeBanner);
+        }
+
+        private void ShowSiegeBanner(BasePlayer player, string title, string subtitle)
+        {
+            if (player == null || !player.IsConnected) return;
+            float fade = Mathf.Max(0f, _cfg.BannerFade);
+            CuiHelper.DestroyUi(player, BannerUi);
+
+            var c = new CuiElementContainer();
+            c.Add(new CuiPanel
+            {
+                Image = { Color = "0.18 0.08 0.02 0.92", FadeIn = fade },
+                RectTransform = { AnchorMin = "0.34 0.90", AnchorMax = "0.66 0.965" },
+                CursorEnabled = false,
+                FadeOut = fade
+            }, "Overlay", BannerUi);
+            c.Add(new CuiPanel
+            {
+                Image = { Color = "0.95 0.45 0.10 1", FadeIn = fade },
+                RectTransform = { AnchorMin = "0 0", AnchorMax = "0.02 1" },
+                FadeOut = fade
+            }, BannerUi);
+            c.Add(new CuiLabel
+            {
+                Text = { Text = title, FontSize = 15, Align = TextAnchor.UpperLeft, Color = "0.98 0.62 0.30 1", FadeIn = fade },
+                RectTransform = { AnchorMin = "0.05 0.5", AnchorMax = "0.97 0.95" },
+                FadeOut = fade
+            }, BannerUi);
+            c.Add(new CuiLabel
+            {
+                Text = { Text = subtitle, FontSize = 12, Align = TextAnchor.LowerLeft, Color = "1 1 1 1", FadeIn = fade },
+                RectTransform = { AnchorMin = "0.05 0.08", AnchorMax = "0.97 0.5" },
+                FadeOut = fade
+            }, BannerUi);
+            CuiHelper.AddUi(player, c);
+        }
+
+        private void DestroySiegeBanner()
+        {
+            foreach (var p in BasePlayer.activePlayerList) CuiHelper.DestroyUi(p, BannerUi);
+            _bannerTimer?.Destroy();
+            _bannerTimer = null;
         }
 
         private void SpawnCrate(Vector3 pos)

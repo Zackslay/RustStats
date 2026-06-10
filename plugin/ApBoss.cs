@@ -156,6 +156,30 @@ namespace Oxide.Plugins
             else player.ChatMessage("Usage: /apboss spawn [tier] | despawn | where");
         }
 
+        // Console / RCON: apboss spawn [tier] | despawn | where
+        [ConsoleCommand("apboss")]
+        private void CcApBoss(ConsoleSystem.Arg arg)
+        {
+            // Server console / RCON has no player; in-game F1 console needs admin.
+            var p = arg.Connection?.player as BasePlayer;
+            if (p != null && !p.IsAdmin) { arg.ReplyWith("You don't have permission."); return; }
+
+            var sub = arg.GetString(0, "").ToLower();
+            if (sub == "spawn")
+            {
+                var tierArg = arg.GetString(1, "");
+                BossTier forced = tierArg.Length > 0
+                    ? _cfg.Tiers.FirstOrDefault(t => t.Name.Replace(" ", "").ToLower().Contains(tierArg.ToLower()))
+                    : null;
+                TrySpawnBoss(true, forced);
+                arg.ReplyWith(forced != null ? $"[ApBoss] Spawning {forced.Name}." : "[ApBoss] Spawning a boss.");
+            }
+            else if (sub == "despawn") { RemoveBoss(); arg.ReplyWith("[ApBoss] Boss removed."); }
+            else if (sub == "where")
+                arg.ReplyWith(Alive(_boss) ? $"[ApBoss] {_tier?.Name} at {GridFromPos(_boss.transform.position)}" : "[ApBoss] No boss active.");
+            else arg.ReplyWith("Usage: apboss spawn [tier] | despawn | where");
+        }
+
         // ── Spawning ──────────────────────────────────────────────────────────
         private void TrySpawnBoss(bool force = false, BossTier forced = null)
         {

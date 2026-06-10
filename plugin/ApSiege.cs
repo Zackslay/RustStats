@@ -248,8 +248,10 @@ namespace Oxide.Plugins
             if (!_cfg.ShowBanner || !_active || player == null) return;
             timer.Once(2f, () =>
             {
-                if (player != null && player.IsConnected && _active)
-                    ShowSiegeBanner(player, $"SIEGE — {_monumentName}", $"Wave {_wave}/{_cfg.Waves} in progress");
+                if (player == null || !player.IsConnected || !_active) return;
+                ShowSiegeBanner(player, $"SIEGE — {_monumentName}", $"Wave {_wave}/{_cfg.Waves} in progress");
+                // Own clear timer so the late-joiner banner doesn't linger between waves.
+                timer.Once(Mathf.Max(1f, _cfg.BannerSeconds), () => { if (player != null && player.IsConnected) CuiHelper.DestroyUi(player, BannerUi); });
             });
         }
 

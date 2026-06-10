@@ -76,6 +76,11 @@ namespace Oxide.Plugins
             [JsonProperty("Apply physical (in-world) boss scaling from MarkerScale")] public bool PhysicalScaling { get; set; } = true;
             [JsonProperty("Physical scale multiplier (x MarkerScale)")] public float PhysicalScaleMultiplier { get; set; } = 1f;
 
+            [JsonProperty("Show in-game map marker")] public bool ShowMapMarker { get; set; } = true;
+            [JsonProperty("Map marker radius")] public float MapMarkerRadius { get; set; } = 0.35f;
+            [JsonProperty("Map marker alpha")] public float MapMarkerAlpha { get; set; } = 0.6f;
+            [JsonProperty("Map marker update interval (seconds)")] public float MapMarkerUpdateInterval { get; set; } = 2f;
+
             [JsonProperty("Boss tiers")] public List<BossTier> Tiers { get; set; } = new()
             {
                 new BossTier { Name = "AP Marauder", Weight = 60f, Color = "#9ca3af", Health = 3000f, DamageScale = 1.25f, MarkerScale = 1.0f, EconomicsReward = 500, ServerRewardsPoints = 250,
@@ -107,6 +112,11 @@ namespace Oxide.Plugins
         private Timer _despawnTimer;
         private Timer _bannerTimer;
         private const string BossBannerUi = "ApBoss.BossBanner";
+
+        // In-game (G) map markers — a colored radius + a named label that follow the boss.
+        private MapMarkerGenericRadius _mapMarker;
+        private VendingMachineMapMarker _mapMarkerName;
+        private Timer _markerTimer;
 
         private void OnServerInitialized()
         {
@@ -214,6 +224,9 @@ namespace Oxide.Plugins
             // Make the boss physically bigger in-world to match its tier/marker.
             ApplyPhysicalScale(npc, tier.MarkerScale);
 
+            // In-game (G) map marker that follows the boss.
+            CreateMapMarker(pos, tier);
+
             // Let the dashboard show a live boss marker (RustCompanion relays it).
             Interface.CallHook("OnApBossSpawned", _boss as BaseEntity, tier.Name, tier.MarkerScale);
 
@@ -311,6 +324,7 @@ namespace Oxide.Plugins
             _bossGrid = null;
             _despawnTimer?.Destroy();
             DestroyBossBanner();
+            RemoveMapMarker();
             Interface.CallHook("OnApBossDespawned");
 
             SpawnLoot(pos, tier);
@@ -377,6 +391,7 @@ namespace Oxide.Plugins
             if (Alive(_boss)) _boss.Kill();
             _boss = null;
             DestroyBossBanner();
+            RemoveMapMarker();
             Interface.CallHook("OnApBossDespawned");
         }
 
@@ -409,6 +424,82 @@ namespace Oxide.Plugins
             {
                 PrintWarning($"[ApBoss] Physical scaling failed: {ex.Message} (install EntityScaleManager for reliable NPC scaling).");
             }
+        }
+
+        // ── In-game map marker ─────────────────────────────────────────────────
+        // A named label (VendingMachineMapMarker) plus a tier-coloured circle
+        // (MapMarkerGenericRadius) that follow the boss on the in-game (G) map.
+        private void CreateMapMarker(Vector3 pos, BossTier tier)
+        {
+            if (!_cfg.ShowMapMarker) return;
+            RemoveMapMarker();
+
+            try
+            {
+                _mapMarkerName = GameManager.server.CreateEntity(
+                    "assets/prefabs/deployable/vendingmachine/vending_mapmarker.prefab", pos) as VendingMachineMapMarker;
+                if (_mapMarkerName != null)
+                {
+                    _mapMarkerName.markerShopName = tier.Name;
+                    _mapMarkerName.enableSaving = false;
+                    _mapMarkerName.Spawn();
+                }
+
+                _mapMarker = GameManager.server.CreateEntity(
+                    "assets/prefabs/tools/map/genericradiusmarker.prefab", pos) as MapMarkerGenericRadius;
+                if (_mapMarker != null)
+                {
+                    Color c = ColorUtility.TryParseHtmlString(tier.Color, out var parsed) ? parsed : Color.red;
+                    _mapMarker.enableSaving = false;
+                    _mapMarker.color1 = c;
+                    _mapMarker.color2 = c;
+                    _mapMarker.alpha = Mathf.Clamp01(_cfg.MapMarkerAlpha);
+                    _mapMarker.radius = Mathf.Max(0.05f, _cfg.MapMarkerRadius);
+                    if (_mapMarkerName != null)
+                    {
+                        _mapMarker.SetParent(_mapMarkerName);
+                        _mapMarker.transform.localPosition = Vector3.zero;
+                    }
+                    _mapMarker.Spawn();
+                    _mapMarker.SendUpdate();
+                }
+
+                _markerTimer?.Destroy();
+                _markerTimer = timer.Every(Mathf.Max(0.5f, _cfg.MapMarkerUpdateInterval), UpdateMapMarker);
+            }
+            catch (Exception ex)
+            {
+                PrintWarning($"[ApBoss] Map marker create failed: {ex.Message}");
+                RemoveMapMarker();
+            }
+        }
+
+        private void UpdateMapMarker()
+        {
+            if (!Alive(_boss)) return;
+            var pos = _boss.transform.position;
+            // The radius marker is parented to the named marker, so moving the
+            // parent moves both.
+            if (_mapMarkerName != null && !_mapMarkerName.IsDestroyed)
+            {
+                _mapMarkerName.transform.position = pos;
+                _mapMarkerName.SendNetworkUpdate();
+            }
+            if (_mapMarker != null && !_mapMarker.IsDestroyed)
+            {
+                if (_mapMarkerName == null) _mapMarker.transform.position = pos;
+                _mapMarker.SendUpdate();
+            }
+        }
+
+        private void RemoveMapMarker()
+        {
+            _markerTimer?.Destroy();
+            _markerTimer = null;
+            if (_mapMarker != null && !_mapMarker.IsDestroyed) _mapMarker.Kill();
+            if (_mapMarkerName != null && !_mapMarkerName.IsDestroyed) _mapMarkerName.Kill();
+            _mapMarker = null;
+            _mapMarkerName = null;
         }
 
         private void ShowBossBanner(BossTier tier, string grid)

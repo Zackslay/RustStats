@@ -37,6 +37,7 @@ namespace Oxide.Plugins
             [JsonProperty("NPC health added per wave")] public float HealthStep { get; set; } = 40f;
             [JsonProperty("NPC damage scale (wave 1)")] public float BaseDamageScale { get; set; } = 0.8f;
             [JsonProperty("NPC damage scale added per wave")] public float DamageStep { get; set; } = 0.1f;
+            [JsonProperty("Adaptive: +1 NPC per N online players (0 = off)")] public int AdaptivePerPlayers { get; set; } = 4;
             [JsonProperty("Spawn radius around monument")] public float SpawnRadius { get; set; } = 30f;
             [JsonProperty("Reward radius (players within get rewards)")] public float RewardRadius { get; set; } = 80f;
             [JsonProperty("Seconds to clear a wave before the siege fails")] public float WaveTimeoutSeconds { get; set; } = 240f;
@@ -147,6 +148,9 @@ namespace Oxide.Plugins
             if (_wave > _cfg.Waves) { Victory(); return; }
 
             int count = _cfg.BaseWaveSize + (_wave - 1) * _cfg.WaveSizeStep;
+            // Adaptive difficulty: busier server → bigger waves (solo-fair, group-hard).
+            if (_cfg.AdaptivePerPlayers > 0)
+                count += BasePlayer.activePlayerList.Count / _cfg.AdaptivePerPlayers;
             float health = _cfg.BaseHealth + (_wave - 1) * _cfg.HealthStep;
             float dmg = _cfg.BaseDamageScale + (_wave - 1) * _cfg.DamageStep;
 

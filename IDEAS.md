@@ -118,8 +118,8 @@ economy). Prioritize features that exploit web↔game integration — others can
 
 ### PvE combat & enemies
 1. ⬜ **Boss weak-points** — bosses spawn destructible armor plates; break them (segmented health bar on the dashboard) for bonus loot.
-2. ⬜ **Adaptive difficulty** — NPC strength scales to the number of nearby players (solo-fair, group-hard).
-3. ⬜ **Elite named NPCs** — rare modifier scientists (Regenerator / Bomber / Sprinter) with a guaranteed rare drop; announced.
+2. ✅ **Adaptive difficulty** — ApSiege waves now add +1 NPC per N online players (config `Adaptive: +1 NPC per N online players`); solo-fair, group-hard.
+3. ✅ **Elite named NPCs** — `ApElites.cs`: rare Sprinter/Bomber/Regenerator scientists between boss cycles; guaranteed ground drops + RP for the kill; `/apelite spawn [type]|despawn|where`.
 4. ⬜ **Boss summoner adds** — bosses periodically spawn minion waves you must clear or get overwhelmed.
 5. ⬜ **Tameable guard animals** — capture/feed a bear or wolf to defend your base from NPC raids.
 6. ⬜ **NPC base raids** — periodic NPC squads assault player TCs (PvE raid pressure, no PvP); optional RP "raid insurance".
@@ -167,8 +167,8 @@ economy). Prioritize features that exploit web↔game integration — others can
 43. ⬜ **Boss-run scheduler** — a web tool to schedule a co-op boss run; pings the sign-ups.
 
 ### Signature / "not like the others"
-44. ⬜ **Escaping world boss** — each time it survives its timer it grows stronger/bigger (ties into ApBoss scaling); tracked live on the dashboard.
-45. ⬜ **Pity timer** — a guaranteed rare drop after N unlucky boss kills, tracked on your profile.
+44. ✅ **Escaping world boss** — ApBoss v1.2: an un-killed boss "ESCAPES" and returns with +15% health / +8% size / +20% rewards per escape (stacking, capped at 5, persisted); killing it resets the streak.
+45. ✅ **Pity timer** — ApBoss v1.2: each kill rolls `Rare drop chance` for bonus `Rare loot items` in the crate; guaranteed after `Rare drop pity` dry kills (persisted).
 46. ⬜ **Server doom clock** — failed events advance a clock; at zero a global hard event fires (shared stakes).
 48. ⬜ **Death echoes** — replay-ghost markers of past notable kills/deaths on the map, each with its story.
 49. ⬜ **PvE control points** — clear and hold a monument to claim it for your team, earning passive RP.

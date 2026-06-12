@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("ApBoss", "SlayStudios", "1.1.0")]
+    [Info("ApBoss", "SlayStudios", "1.2.0")]
     [Description("Timed roaming boss event with tiers (NpcSpawn), loot + Economics/ServerRewards rewards and dashboard boss tracking")]
     public class ApBoss : RustPlugin
     {
@@ -81,6 +81,20 @@ namespace Oxide.Plugins
             [JsonProperty("Map marker alpha")] public float MapMarkerAlpha { get; set; } = 0.6f;
             [JsonProperty("Map marker update interval (seconds)")] public float MapMarkerUpdateInterval { get; set; } = 2f;
 
+            [JsonProperty("Escaping boss: each escape makes the next boss stronger")] public bool Escalation { get; set; } = true;
+            [JsonProperty("Escalation health bonus per escape (0.15 = +15%)")] public float EscalationHealth { get; set; } = 0.15f;
+            [JsonProperty("Escalation size bonus per escape (0.08 = +8%)")] public float EscalationSize { get; set; } = 0.08f;
+            [JsonProperty("Escalation reward bonus per escape (0.2 = +20%)")] public float EscalationReward { get; set; } = 0.2f;
+            [JsonProperty("Escalation max stacks")] public int EscalationMax { get; set; } = 5;
+
+            [JsonProperty("Rare drop chance per boss kill (0-1)")] public float RareChance { get; set; } = 0.1f;
+            [JsonProperty("Rare drop pity (guaranteed after N kills without one, 0 = off)")] public int PityKills { get; set; } = 5;
+            [JsonProperty("Rare loot items")] public List<LootItem> RareLoot { get; set; } = new()
+            {
+                new LootItem { ShortName = "rifle.l96", Amount = 1 },
+                new LootItem { ShortName = "ammo.rifle", Amount = 100 },
+            };
+
             [JsonProperty("Boss tiers")] public List<BossTier> Tiers { get; set; } = new()
             {
                 new BossTier { Name = "AP Marauder", Weight = 60f, Color = "#9ca3af", Health = 3000f, DamageScale = 1.25f, MarkerScale = 1.0f, EconomicsReward = 500, ServerRewardsPoints = 250,
@@ -118,9 +132,24 @@ namespace Oxide.Plugins
         private VendingMachineMapMarker _mapMarkerName;
         private Timer _markerTimer;
 
+        // Escalation/pity state persisted across reloads (oxide/data/ApBoss.json).
+        private class StoredData { public int Escalation; public int KillsSinceRare; }
+        private StoredData _data;
+        private int _escAtSpawn; // stacks the CURRENT boss was spawned with
+
+        private void LoadData()
+        {
+            try { _data = Interface.Oxide.DataFileSystem.ReadObject<StoredData>("ApBoss"); }
+            catch { _data = null; }
+            if (_data == null) _data = new StoredData();
+        }
+
+        private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject("ApBoss", _data);
+
         private void OnServerInitialized()
         {
             LoadConfig();
+            LoadData();
             if (NpcSpawn == null)
             {
                 PrintError("NpcSpawn is not loaded — install NpcSpawn.cs. ApBoss is disabled until then.");
@@ -210,7 +239,12 @@ namespace Oxide.Plugins
                 return;
             }
 
-            var npc = NpcSpawn.Call("SpawnNpc", pos, BuildBossConfig(tier)) as ScientistNPC;
+            // Escaping boss: stacks from previous escapes buff this spawn.
+            _escAtSpawn = _cfg.Escalation ? Mathf.Clamp(_data.Escalation, 0, Mathf.Max(0, _cfg.EscalationMax)) : 0;
+            float healthMult = 1f + _escAtSpawn * Mathf.Max(0f, _cfg.EscalationHealth);
+            float sizeMult = 1f + _escAtSpawn * Mathf.Max(0f, _cfg.EscalationSize);
+
+            var npc = NpcSpawn.Call("SpawnNpc", pos, BuildBossConfig(tier, healthMult)) as ScientistNPC;
             if (npc == null)
             {
                 PrintError("[ApBoss] NpcSpawn returned null — check NpcSpawn config/version.");
@@ -221,22 +255,24 @@ namespace Oxide.Plugins
             _bossNetId = npc.net.ID.Value;
             _tier = tier;
 
-            // Make the boss physically bigger in-world to match its tier/marker.
-            ApplyPhysicalScale(npc, tier.MarkerScale);
+            // Make the boss physically bigger in-world to match its tier/marker
+            // (escapes make it bigger still).
+            ApplyPhysicalScale(npc, tier.MarkerScale * sizeMult);
 
             // In-game (G) map marker that follows the boss.
             CreateMapMarker(pos, tier);
 
             // Let the dashboard show a live boss marker (RustCompanion relays it).
-            Interface.CallHook("OnApBossSpawned", _boss as BaseEntity, tier.Name, tier.MarkerScale);
+            Interface.CallHook("OnApBossSpawned", _boss as BaseEntity, tier.Name, tier.MarkerScale * sizeMult);
 
             string grid = GridFromPos(pos);
             _bossGrid = grid;
             ShowBossBanner(tier, grid);
             if (_cfg.AnnounceSpawn)
             {
-                Broadcast($"💀 <color={tier.Color}>{tier.Name}</color> has appeared at <color=#fbbf24>{grid}</color>! Hunt it down for rewards.");
-                SendDiscord($"💀 **{tier.Name}** has spawned at **{grid}**.");
+                string escNote = _escAtSpawn > 0 ? $" It has escaped <color=#f97316>{_escAtSpawn}x</color> and grown stronger!" : "";
+                Broadcast($"💀 <color={tier.Color}>{tier.Name}</color> has appeared at <color=#fbbf24>{grid}</color>! Hunt it down for rewards.{escNote}");
+                SendDiscord($"💀 **{tier.Name}** has spawned at **{grid}**.{(_escAtSpawn > 0 ? $" (escaped {_escAtSpawn}x — buffed)" : "")}");
             }
 
             _despawnTimer?.Destroy();
@@ -244,7 +280,15 @@ namespace Oxide.Plugins
             {
                 if (Alive(_boss))
                 {
-                    if (_cfg.AnnounceSpawn)
+                    // The boss escaped — it returns stronger next time.
+                    if (_cfg.Escalation)
+                    {
+                        _data.Escalation = Mathf.Min(Mathf.Max(0, _cfg.EscalationMax), _data.Escalation + 1);
+                        SaveData();
+                        if (_cfg.AnnounceSpawn)
+                            Broadcast($"<color={_tier.Color}>{_tier.Name}</color> has <color=#f97316>ESCAPED</color>! It will return stronger (x{_data.Escalation}).");
+                    }
+                    else if (_cfg.AnnounceSpawn)
                         Broadcast($"<color={_tier.Color}>{_tier.Name}</color> has vanished. Better luck next time.");
                     RemoveBoss();
                 }
@@ -264,7 +308,7 @@ namespace Oxide.Plugins
             return _cfg.Tiers.Last();
         }
 
-        private JObject BuildBossConfig(BossTier tier)
+        private JObject BuildBossConfig(BossTier tier, float healthMult = 1f)
         {
             var belt = new JArray();
             var wear = new JArray();
@@ -281,7 +325,7 @@ namespace Oxide.Plugins
                 ["WearItems"] = wear,
                 ["BeltItems"] = belt,
                 ["Kit"] = _cfg.Kit ?? "",
-                ["Health"] = tier.Health,
+                ["Health"] = tier.Health * Mathf.Max(0.01f, healthMult),
                 ["RoamRange"] = _cfg.RoamRange,
                 ["ChaseRange"] = _cfg.ChaseRange,
                 ["SenseRange"] = _cfg.SenseRange,
@@ -322,28 +366,53 @@ namespace Oxide.Plugins
             _boss = null;
             _tier = null;
             _bossGrid = null;
+            int escStacks = _escAtSpawn;
+            _escAtSpawn = 0;
             _despawnTimer?.Destroy();
             DestroyBossBanner();
             RemoveMapMarker();
             Interface.CallHook("OnApBossDespawned");
 
-            SpawnLoot(pos, tier);
+            // Slaying the boss ends its escape streak.
+            bool dataChanged = false;
+            if (_data.Escalation != 0) { _data.Escalation = 0; dataChanged = true; }
+
+            // Pity timer: roll for a rare drop, guaranteed after N dry kills.
+            bool rare = false;
+            if (killer != null && _cfg.RareLoot != null && _cfg.RareLoot.Count > 0)
+            {
+                _data.KillsSinceRare++;
+                if (UnityEngine.Random.value < Mathf.Clamp01(_cfg.RareChance) ||
+                    (_cfg.PityKills > 0 && _data.KillsSinceRare >= _cfg.PityKills))
+                {
+                    rare = true;
+                    _data.KillsSinceRare = 0;
+                }
+                dataChanged = true;
+            }
+            if (dataChanged) SaveData();
+
+            SpawnLoot(pos, tier, rare);
 
             if (killer != null && tier != null)
             {
+                // Escaped bosses pay out more.
+                float rewardMult = 1f + escStacks * Mathf.Max(0f, _cfg.EscalationReward);
                 if (tier.EconomicsReward > 0)
-                    Economics?.Call("Deposit", killer.UserIDString, tier.EconomicsReward);
+                    Economics?.Call("Deposit", killer.UserIDString, tier.EconomicsReward * rewardMult);
                 if (tier.ServerRewardsPoints > 0)
-                    ServerRewards?.Call("AddPoints", killer.userID, tier.ServerRewardsPoints);
+                    ServerRewards?.Call("AddPoints", killer.userID, Mathf.RoundToInt(tier.ServerRewardsPoints * rewardMult));
 
                 if (_cfg.ReportToDashboard)
                     Interface.CallHook("OnApBossKilled", killer, tier.Name);
 
-                killer.ChatMessage($"You slew the {tier.Name}! Rewards delivered. Loot dropped at {grid}.");
+                string bonusNote = escStacks > 0 ? $" Escape bonus: +{Mathf.RoundToInt(escStacks * _cfg.EscalationReward * 100)}%!" : "";
+                killer.ChatMessage($"You slew the {tier.Name}! Rewards delivered. Loot dropped at {grid}.{bonusNote}");
                 if (_cfg.AnnounceKill)
                 {
-                    Broadcast($"⚔️ <color=#34d399>{killer.displayName}</color> slew <color={tier.Color}>{tier.Name}</color> at <color=#fbbf24>{grid}</color>!");
-                    SendDiscord($"⚔️ **{killer.displayName}** killed **{tier.Name}** at **{grid}**.");
+                    string rareNote = rare ? " 💎 <color=#a78bfa>RARE DROP!</color>" : "";
+                    Broadcast($"⚔️ <color=#34d399>{killer.displayName}</color> slew <color={tier.Color}>{tier.Name}</color> at <color=#fbbf24>{grid}</color>!{rareNote}");
+                    SendDiscord($"⚔️ **{killer.displayName}** killed **{tier.Name}** at **{grid}**.{(rare ? " 💎 Rare drop!" : "")}");
                 }
             }
             else if (_cfg.AnnounceKill && tier != null)
@@ -352,7 +421,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private void SpawnLoot(Vector3 pos, BossTier tier)
+        private void SpawnLoot(Vector3 pos, BossTier tier, bool rare = false)
         {
             if (tier == null) return;
             try
@@ -364,7 +433,9 @@ namespace Oxide.Plugins
                 var container = (crate as StorageContainer)?.inventory;
                 if (container != null)
                 {
-                    foreach (var li in tier.BonusLoot)
+                    var loot = new List<LootItem>(tier.BonusLoot);
+                    if (rare && _cfg.RareLoot != null) loot.AddRange(_cfg.RareLoot);
+                    foreach (var li in loot)
                     {
                         if (string.IsNullOrEmpty(li.ShortName) || li.Amount <= 0) continue;
                         var item = ItemManager.CreateByName(li.ShortName, li.Amount, li.SkinID);
@@ -385,6 +456,7 @@ namespace Oxide.Plugins
             _despawnTimer = null;
             _bannerTimer?.Destroy();
             _bannerTimer = null;
+            _escAtSpawn = 0;
             _bossNetId = 0;
             _tier = null;
             _bossGrid = null;

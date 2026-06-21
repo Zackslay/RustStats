@@ -8,8 +8,8 @@ using UnityEngine.AI;
 
 namespace Oxide.Plugins
 {
-    [Info("ApRaidCleanup", "SlayStudios", "1.3.0")]
-    [Description("Removes broken (off-navmesh) animals that spam FSMComponent.BudgetedUpdate NRE — targeted auto ai.killanimals + raid-base sweep")]
+    [Info("ApRaidCleanup", "SlayStudios", "1.4.0")]
+    [Description("Fixes off-navmesh animals (FSMComponent.BudgetedUpdate NRE spam) by warping them back onto the navmesh — no culling, so no respawn loop")]
     public class ApRaidCleanup : RustPlugin
     {
         [PluginReference] private Plugin RaidableBases;
@@ -18,13 +18,13 @@ namespace Oxide.Plugins
 
         private class Configuration
         {
-            [JsonProperty("Janitor: periodically remove broken (off-navmesh) animals")] public bool Janitor { get; set; } = true;
+            [JsonProperty("Janitor: periodically fix off-navmesh animals")] public bool Janitor { get; set; } = true;
             [JsonProperty("Janitor scan interval (seconds)")] public float JanitorInterval { get; set; } = 15f;
-            [JsonProperty("Janitor: only kill if broken on two consecutive scans")] public bool TwoStrike { get; set; } = false;
-            [JsonProperty("Also sweep animals when a raid base spawns")] public bool RaidSweep { get; set; } = true;
+            [JsonProperty("Warp search radius (meters) — how far to look for navmesh")] public float WarpSearchRadius { get; set; } = 40f;
+            [JsonProperty("Kill animals that have no navmesh within range (e.g. deep ocean)")] public bool KillIfNoNavmesh { get; set; } = true;
+            [JsonProperty("Also sweep when a raid base spawns")] public bool RaidSweep { get; set; } = true;
             [JsonProperty("Raid base sweep radius (meters)")] public float Radius { get; set; } = 60f;
-            [JsonProperty("Raid base follow-up sweep delays (seconds)")] public float[] SweepDelays { get; set; } = { 4f, 12f, 25f };
-            [JsonProperty("Log how many animals were cleared")] public bool Log { get; set; } = true;
+            [JsonProperty("Log activity")] public bool Log { get; set; } = true;
         }
 
         protected override void LoadConfig()
@@ -32,18 +32,14 @@ namespace Oxide.Plugins
             base.LoadConfig();
             try { _cfg = Config.ReadObject<Configuration>(); }
             catch { _cfg = new Configuration(); }
-            if (_cfg.SweepDelays == null) _cfg.SweepDelays = new[] { 4f, 12f, 25f };
             SaveConfig();
         }
 
         protected override void SaveConfig() => Config.WriteObject(_cfg);
         protected override void LoadDefaultConfig() => _cfg = new Configuration();
 
-        private readonly HashSet<ulong> _flaggedLastScan = new HashSet<ulong>();
         private bool _janitorStarted;
 
-        // Start from multiple lifecycle points so the timer runs no matter which
-        // hook fires on (hot-)reload — that's the likeliest reason it never ran.
         private void Loaded() => StartJanitor();
         private void OnServerInitialized() => StartJanitor();
 
@@ -54,124 +50,111 @@ namespace Oxide.Plugins
             LoadConfig();
             if (!_cfg.Janitor) return;
             float interval = Mathf.Max(5f, _cfg.JanitorInterval);
-            // Delay the first sweep so the navmesh is fully built at boot (otherwise
-            // every animal looks off-mesh and we'd cull healthy wildlife). For an
-            // immediate clear after a reload, use the apraidcleanup.fix command.
+            // Delay first sweep so the navmesh is fully built at boot (otherwise
+            // every animal looks off-mesh). Use apraidcleanup.fix for an instant pass.
             timer.Once(45f, () =>
             {
                 RunJanitor();
                 timer.Every(interval, RunJanitor);
             });
-            Puts($"[ApRaidCleanup] Janitor scheduled: first sweep in 45s, then every {interval}s (twoStrike={_cfg.TwoStrike}).");
+            Puts($"[ApRaidCleanup] Janitor scheduled: first sweep in 45s, then every {interval}s.");
         }
 
-        // ── Broken-animal helpers ───────────────────────────────────────────────
+        // ── Detection + repair ──────────────────────────────────────────────────
         private static bool IsBroken(BaseAnimalNPC a)
         {
             if (a == null || a.IsDestroyed) return false;
-            // A healthy animal sits on the navmesh with a valid agent. A trapped /
-            // scaled / orphaned one has no agent or is off the mesh — that's what
-            // throws FSMComponent.BudgetedUpdate every frame.
             var agent = a.GetComponent<NavMeshAgent>();
-            if (agent == null) return true;
-            if (!agent.isOnNavMesh) return true;
+            if (agent == null) return true;          // no agent → brain has nothing to drive
+            if (!agent.isOnNavMesh) return true;     // off the mesh → FSM NREs every frame
             return false;
+        }
+
+        // Warp a stuck animal back onto the nearest navmesh point. Returns true if
+        // rescued, false if no navmesh nearby (caller may then cull it).
+        private bool TryRescue(BaseAnimalNPC a)
+        {
+            var pos = a.transform.position;
+            if (!NavMesh.SamplePosition(pos, out var hit, Mathf.Max(2f, _cfg.WarpSearchRadius), NavMesh.AllAreas))
+                return false;
+
+            var agent = a.GetComponent<NavMeshAgent>();
+            if (agent != null && agent.enabled)
+            {
+                if (!agent.Warp(hit.position))
+                {
+                    a.transform.position = hit.position;
+                    agent.Warp(hit.position);
+                }
+            }
+            else
+            {
+                a.transform.position = hit.position;
+            }
+            a.SendNetworkUpdate();
+            return true;
+        }
+
+        // Returns (rescued, culled).
+        private (int, int) Sweep(IEnumerable<BaseAnimalNPC> animals)
+        {
+            int rescued = 0, culled = 0;
+            foreach (var a in animals)
+            {
+                if (!IsBroken(a)) continue;
+                if (TryRescue(a)) rescued++;
+                else if (_cfg.KillIfNoNavmesh) { a.Kill(); culled++; }
+            }
+            return (rescued, culled);
+        }
+
+        private List<BaseAnimalNPC> AllAnimals()
+        {
+            var list = new List<BaseAnimalNPC>();
+            foreach (var e in BaseNetworkable.serverEntities)
+                if (e is BaseAnimalNPC a && !a.IsDestroyed) list.Add(a);
+            return list;
         }
 
         private void RunJanitor()
         {
-            int scanned = 0, broken = 0, killed = 0;
-            var stillFlagged = new HashSet<ulong>();
-            foreach (var e in BaseNetworkable.serverEntities)
-            {
-                var a = e as BaseAnimalNPC;
-                if (a == null) continue;
-                scanned++;
-                if (!IsBroken(a)) continue;
-                broken++;
-                ulong id = a.net?.ID.Value ?? 0;
-                if (id == 0) continue;
-                // Two-strike: only remove if it was broken last scan too, so we never
-                // kill an animal that's only momentarily off-mesh (falling/swimming).
-                if (_cfg.TwoStrike && !_flaggedLastScan.Contains(id))
-                {
-                    stillFlagged.Add(id);
-                    continue;
-                }
-                a.Kill();
-                killed++;
-            }
-
-            _flaggedLastScan.Clear();
-            foreach (var id in stillFlagged) _flaggedLastScan.Add(id);
-
-            // Log every run (when enabled) so it's clear the timer is firing.
-            if (_cfg.Log)
-                Puts($"[ApRaidCleanup] Janitor: scanned {scanned} animals, {broken} broken, killed {killed}.");
+            var animals = AllAnimals();
+            var (rescued, culled) = Sweep(animals);
+            if (_cfg.Log && (rescued > 0 || culled > 0))
+                Puts($"[ApRaidCleanup] Janitor: {animals.Count} animals — rescued {rescued} onto navmesh, culled {culled} stranded.");
         }
 
         // ── Raid-base sweep ─────────────────────────────────────────────────────
         private void OnRaidableBaseStarted(Vector3 raidPos, int mode)
         {
             if (!_cfg.RaidSweep) return;
-            ClearAnimals(raidPos);
-            foreach (var d in _cfg.SweepDelays)
+            timer.Once(5f, () =>
             {
-                float delay = Mathf.Max(0.5f, d);
-                timer.Once(delay, () => ClearAnimals(raidPos));
-            }
+                var list = new List<BaseAnimalNPC>();
+                Vis.Entities(raidPos, Mathf.Max(5f, _cfg.Radius), list);
+                var (rescued, culled) = Sweep(list);
+                if (_cfg.Log && (rescued > 0 || culled > 0))
+                    Puts($"[ApRaidCleanup] Raid sweep near {raidPos}: rescued {rescued}, culled {culled}.");
+            });
         }
 
-        private void ClearAnimals(Vector3 center)
-        {
-            var list = new List<BaseAnimalNPC>();
-            Vis.Entities(center, Mathf.Max(5f, _cfg.Radius), list);
-            int killed = 0;
-            foreach (var a in list)
-            {
-                if (a == null || a.IsDestroyed) continue;
-                if (IsBroken(a)) { a.Kill(); killed++; }
-            }
-            if (_cfg.Log && killed > 0)
-                Puts($"[ApRaidCleanup] Raid sweep removed {killed} broken animal(s) near {center}.");
-        }
-
-        // Immediate cull of ALL broken animals right now (ignores the timer and
-        // two-strike). Verifiable: reports killed + remaining-broken after.
-        // Run "apraidcleanup.fix" from console/F1.
+        // ── Commands ────────────────────────────────────────────────────────────
         [ConsoleCommand("apraidcleanup.fix")]
         private void CcFix(ConsoleSystem.Arg arg)
         {
             var p = arg.Connection?.player as BasePlayer;
             if (p != null && !p.IsAdmin) return;
 
-            int scanned = 0, killed = 0;
-            foreach (var e in BaseNetworkable.serverEntities)
-            {
-                var a = e as BaseAnimalNPC;
-                if (a == null || a.IsDestroyed) continue;
-                scanned++;
-                if (IsBroken(a)) { a.Kill(); killed++; }
-            }
+            var animals = AllAnimals();
+            int brokenBefore = animals.Count(IsBroken);
+            var (rescued, culled) = Sweep(animals);
+            int brokenAfter = AllAnimals().Count(IsBroken);
 
-            // Re-scan after killing to confirm they actually died.
-            int remaining = 0, total = 0;
-            foreach (var e in BaseNetworkable.serverEntities)
-            {
-                var a = e as BaseAnimalNPC;
-                if (a == null || a.IsDestroyed) continue;
-                total++;
-                if (IsBroken(a)) remaining++;
-            }
-
-            string msg = $"[ApRaidCleanup] fix: scanned {scanned}, killed {killed} broken; now {total} animals, {remaining} still broken.";
+            string msg = $"[ApRaidCleanup] fix: {animals.Count} animals, {brokenBefore} broken → rescued {rescued}, culled {culled}; {brokenAfter} still broken.";
             arg.ReplyWith(msg);
             Puts(msg);
         }
 
-        // ── Diagnostic ──────────────────────────────────────────────────────────
-        // Run "apraidcleanup.scan" from the server console / F1 to see exactly what
-        // animals exist and which are broken (species, count, position, scale).
         [ConsoleCommand("apraidcleanup.scan")]
         private void CcScan(ConsoleSystem.Arg arg)
         {
@@ -180,36 +163,17 @@ namespace Oxide.Plugins
 
             var counts = new Dictionary<string, int>();
             var brokenCounts = new Dictionary<string, int>();
-            var samples = new List<string>();
-
-            foreach (var e in BaseNetworkable.serverEntities)
+            foreach (var a in AllAnimals())
             {
-                var a = e as BaseAnimalNPC;
-                if (a == null || a.IsDestroyed) continue;
                 string name = a.ShortPrefabName ?? "animal";
                 counts[name] = counts.TryGetValue(name, out var c) ? c + 1 : 1;
-                if (IsBroken(a))
-                {
-                    brokenCounts[name] = brokenCounts.TryGetValue(name, out var bc) ? bc + 1 : 1;
-                    if (samples.Count < 25)
-                    {
-                        var agent = a.GetComponent<NavMeshAgent>();
-                        var pos = a.transform.position;
-                        float sc = a.transform.localScale.x;
-                        samples.Add($"  {name} @ ({pos.x:0},{pos.y:0},{pos.z:0}) agentNull={agent == null} onMesh={(agent != null && agent.isOnNavMesh)} scale={sc:0.##}");
-                    }
-                }
+                if (IsBroken(a)) brokenCounts[name] = brokenCounts.TryGetValue(name, out var bc) ? bc + 1 : 1;
             }
 
             var sb = new StringBuilder();
             sb.AppendLine($"[ApRaidCleanup] Animal scan — {counts.Values.Sum()} total, {brokenCounts.Values.Sum()} broken:");
             foreach (var kv in counts.OrderByDescending(k => k.Value))
-                sb.AppendLine($"  {kv.Key}: {kv.Value} total" + (brokenCounts.TryGetValue(kv.Key, out var b) ? $" ({b} BROKEN)" : ""));
-            if (samples.Count > 0)
-            {
-                sb.AppendLine("Broken samples:");
-                foreach (var s in samples) sb.AppendLine(s);
-            }
+                sb.AppendLine($"  {kv.Key}: {kv.Value} total" + (brokenCounts.TryGetValue(kv.Key, out var b) ? $" ({b} broken)" : ""));
             arg.ReplyWith(sb.ToString());
             Puts(sb.ToString());
         }

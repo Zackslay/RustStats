@@ -8,7 +8,7 @@ using UnityEngine.AI;
 
 namespace Oxide.Plugins
 {
-    [Info("ApRaidCleanup", "SlayStudios", "1.1.0")]
+    [Info("ApRaidCleanup", "SlayStudios", "1.2.0")]
     [Description("Removes broken (off-navmesh) animals that spam FSMComponent.BudgetedUpdate NRE — targeted auto ai.killanimals + raid-base sweep")]
     public class ApRaidCleanup : RustPlugin
     {
@@ -63,18 +63,15 @@ namespace Oxide.Plugins
 
         private void RunJanitor()
         {
-            var brokenNow = new List<BaseAnimalNPC>();
+            int scanned = 0, broken = 0, killed = 0;
+            var stillFlagged = new HashSet<ulong>();
             foreach (var e in BaseNetworkable.serverEntities)
             {
                 var a = e as BaseAnimalNPC;
                 if (a == null) continue;
-                if (IsBroken(a)) brokenNow.Add(a);
-            }
-
-            int killed = 0;
-            var stillFlagged = new HashSet<ulong>();
-            foreach (var a in brokenNow)
-            {
+                scanned++;
+                if (!IsBroken(a)) continue;
+                broken++;
                 ulong id = a.net?.ID.Value ?? 0;
                 if (id == 0) continue;
                 // Two-strike: only remove if it was broken last scan too, so we never
@@ -91,8 +88,9 @@ namespace Oxide.Plugins
             _flaggedLastScan.Clear();
             foreach (var id in stillFlagged) _flaggedLastScan.Add(id);
 
-            if (_cfg.Log && killed > 0)
-                Puts($"[ApRaidCleanup] Janitor removed {killed} broken animal(s).");
+            // Log every run (when enabled) so it's clear the timer is firing.
+            if (_cfg.Log)
+                Puts($"[ApRaidCleanup] Janitor: scanned {scanned} animals, {broken} broken, killed {killed}.");
         }
 
         // ── Raid-base sweep ─────────────────────────────────────────────────────
@@ -119,6 +117,39 @@ namespace Oxide.Plugins
             }
             if (_cfg.Log && killed > 0)
                 Puts($"[ApRaidCleanup] Raid sweep removed {killed} broken animal(s) near {center}.");
+        }
+
+        // Immediate cull of ALL broken animals right now (ignores the timer and
+        // two-strike). Verifiable: reports killed + remaining-broken after.
+        // Run "apraidcleanup.fix" from console/F1.
+        [ConsoleCommand("apraidcleanup.fix")]
+        private void CcFix(ConsoleSystem.Arg arg)
+        {
+            var p = arg.Connection?.player as BasePlayer;
+            if (p != null && !p.IsAdmin) return;
+
+            int scanned = 0, killed = 0;
+            foreach (var e in BaseNetworkable.serverEntities)
+            {
+                var a = e as BaseAnimalNPC;
+                if (a == null || a.IsDestroyed) continue;
+                scanned++;
+                if (IsBroken(a)) { a.Kill(); killed++; }
+            }
+
+            // Re-scan after killing to confirm they actually died.
+            int remaining = 0, total = 0;
+            foreach (var e in BaseNetworkable.serverEntities)
+            {
+                var a = e as BaseAnimalNPC;
+                if (a == null || a.IsDestroyed) continue;
+                total++;
+                if (IsBroken(a)) remaining++;
+            }
+
+            string msg = $"[ApRaidCleanup] fix: scanned {scanned}, killed {killed} broken; now {total} animals, {remaining} still broken.";
+            arg.ReplyWith(msg);
+            Puts(msg);
         }
 
         // ── Diagnostic ──────────────────────────────────────────────────────────

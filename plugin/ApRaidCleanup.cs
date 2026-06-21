@@ -8,7 +8,7 @@ using UnityEngine.AI;
 
 namespace Oxide.Plugins
 {
-    [Info("ApRaidCleanup", "SlayStudios", "1.2.0")]
+    [Info("ApRaidCleanup", "SlayStudios", "1.3.0")]
     [Description("Removes broken (off-navmesh) animals that spam FSMComponent.BudgetedUpdate NRE — targeted auto ai.killanimals + raid-base sweep")]
     public class ApRaidCleanup : RustPlugin
     {
@@ -19,8 +19,8 @@ namespace Oxide.Plugins
         private class Configuration
         {
             [JsonProperty("Janitor: periodically remove broken (off-navmesh) animals")] public bool Janitor { get; set; } = true;
-            [JsonProperty("Janitor scan interval (seconds)")] public float JanitorInterval { get; set; } = 60f;
-            [JsonProperty("Janitor: only kill if broken on two consecutive scans")] public bool TwoStrike { get; set; } = true;
+            [JsonProperty("Janitor scan interval (seconds)")] public float JanitorInterval { get; set; } = 15f;
+            [JsonProperty("Janitor: only kill if broken on two consecutive scans")] public bool TwoStrike { get; set; } = false;
             [JsonProperty("Also sweep animals when a raid base spawns")] public bool RaidSweep { get; set; } = true;
             [JsonProperty("Raid base sweep radius (meters)")] public float Radius { get; set; } = 60f;
             [JsonProperty("Raid base follow-up sweep delays (seconds)")] public float[] SweepDelays { get; set; } = { 4f, 12f, 25f };
@@ -40,12 +40,29 @@ namespace Oxide.Plugins
         protected override void LoadDefaultConfig() => _cfg = new Configuration();
 
         private readonly HashSet<ulong> _flaggedLastScan = new HashSet<ulong>();
+        private bool _janitorStarted;
 
-        private void OnServerInitialized()
+        // Start from multiple lifecycle points so the timer runs no matter which
+        // hook fires on (hot-)reload — that's the likeliest reason it never ran.
+        private void Loaded() => StartJanitor();
+        private void OnServerInitialized() => StartJanitor();
+
+        private void StartJanitor()
         {
+            if (_janitorStarted) return;
+            _janitorStarted = true;
             LoadConfig();
-            if (_cfg.Janitor)
-                timer.Every(Mathf.Max(15f, _cfg.JanitorInterval), RunJanitor);
+            if (!_cfg.Janitor) return;
+            float interval = Mathf.Max(5f, _cfg.JanitorInterval);
+            // Delay the first sweep so the navmesh is fully built at boot (otherwise
+            // every animal looks off-mesh and we'd cull healthy wildlife). For an
+            // immediate clear after a reload, use the apraidcleanup.fix command.
+            timer.Once(45f, () =>
+            {
+                RunJanitor();
+                timer.Every(interval, RunJanitor);
+            });
+            Puts($"[ApRaidCleanup] Janitor scheduled: first sweep in 45s, then every {interval}s (twoStrike={_cfg.TwoStrike}).");
         }
 
         // ── Broken-animal helpers ───────────────────────────────────────────────
